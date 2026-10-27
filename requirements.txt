@@ -1,0 +1,6 @@
+demoparser2>=0.42
+pandas>=2.2
+fastapi>=0.115
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9
+pytest>=8

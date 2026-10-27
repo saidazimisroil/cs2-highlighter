@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CS2 Highlights</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <h1><span class="mark">▲</span> CS2 Highlights</h1>
+    <div id="status" class="status"></div>
+  </header>
+
+  <main>
+    <section class="card" id="step-demo">
+      <h2><span class="n">1</span> Demo</h2>
+      <div class="row">
+        <input id="demo-path" type="text" placeholder="Paste a .dem path, e.g. C:\...\csgo\match.dem" spellcheck="false">
+        <button id="use-path">Use file</button>
+      </div>
+      <label id="drop" class="drop">
+        <input id="demo-file" type="file" accept=".dem" hidden>
+        <span>…or drop a <b>.dem</b> here / click to upload a copy</span>
+      </label>
+      <div id="recent" class="recent"></div>
+      <div id="demo-info" class="muted"></div>
+    </section>
+
+    <section class="card hidden" id="step-player">
+      <h2><span class="n">2</span> Player</h2>
+      <div id="teams" class="teams"></div>
+    </section>
+
+    <section class="card hidden" id="step-highlights">
+      <h2><span class="n">3</span> Highlights</h2>
+      <div class="toolbar">
+        <label>Before kill <input id="pre" type="number" min="1" max="10" step="0.5" value="4"> s</label>
+        <label>After kill <input id="post" type="number" min="0.5" max="10" step="0.5" value="2"> s</label>
+        <label>Quality
+          <select id="quality">
+            <option value="1280x720x60" selected>720p · 60 fps (faster)</option>
+            <option value="1920x1080x60">1080p · 60 fps</option>
+            <option value="1280x720x30">720p · 30 fps (fastest)</option>
+          </select>
+        </label>
+      </div>
+      <ol id="highlights" class="highlights"></ol>
+      <div class="render-bar">
+        <span id="summary" class="muted"></span>
+        <button id="render" class="primary">Render video</button>
+      </div>
+    </section>
+
+    <section class="card hidden" id="step-jobs">
+      <h2><span class="n">4</span> Videos</h2>
+      <div id="jobs"></div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
