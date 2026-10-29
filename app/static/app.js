@@ -14,9 +14,11 @@ const show = (id) => $(id).classList.remove("hidden");
 async function loadStatus() {
   const s = await api("/api/status");
   const chip = (ok, label, tip) => `<span class="chip ${ok ? "ok" : "bad"}" title="${esc(tip || "")}">${label}</span>`;
-  $("#status").innerHTML =
-    chip(s.csdm, "CS Demo Manager", s.csdm || "csdm.exe not found — see README setup") +
-    chip(s.ffmpeg && s.ffprobe, "FFmpeg", s.ffmpeg || "not found");
+  const recorder = s.mode === "hlae"
+    ? chip(s.hlae, "HLAE", s.hlae || "HLAE.exe not found — see README setup") +
+      chip(s.cs2, "CS2", s.cs2 || "cs2.exe not found — set CS2_PATH")
+    : chip(s.csdm, "CS Demo Manager", s.csdm || "csdm.exe not found — see README setup");
+  $("#status").innerHTML = recorder + chip(s.ffmpeg && s.ffprobe, "FFmpeg", s.ffmpeg || "not found");
 }
 
 // ---- demos ----------------------------------------------------------------------------------

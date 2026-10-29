@@ -1,7 +1,9 @@
-"""Records highlight segments as in-game footage by driving CS Demo Manager's CLI (CS2 + HLAE).
+"""Records highlight segments as in-game footage (CS2 + HLAE).
 
-Two modes (env CS2HL_RENDER_MODE):
-  "config"   (default) one `csdm video --config-file` run with every segment as a sequence,
+Three modes (env CS2HL_RENDER_MODE):
+  "hlae"     (default) drive HLAE directly with tick-scheduled commands (see hlae.py). Doesn't
+             need CS Demo Manager's CS2 plugin, which game updates tend to break.
+  "config"   one `csdm video --config-file` run with every segment as a sequence,
              so CS2 starts only once.
   "per-clip" one documented `csdm video <demo> <start> <end>` run per segment. Slower (CS2
              restarts each time) but every file lands in its own folder.
@@ -19,6 +21,12 @@ from .highlights import Highlight
 
 VIDEO_EXTS = {".mp4", ".mkv", ".avi", ".mov"}
 Log = Callable[[str], None]
+
+# csdm can exit 0 even when CS2 crashed, so its output is checked for this line too.
+GAME_ERROR = re.compile(r"^\s*game error\b", re.IGNORECASE)
+GAME_ERROR_HINT = ("CS2 crashed or closed during recording (CS Demo Manager reported \"Game error\"). "
+                   "This usually means a CS2 update broke HLAE or CS Demo Manager's plugin: update "
+                   "both in CS Demo Manager's settings, record a short test video there, then try again.")
 
 
 @dataclass
@@ -112,11 +120,16 @@ def _run(cmd: list[str], log: Log) -> None:
     flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                             text=True, encoding="utf-8", errors="replace", creationflags=flags)
+    game_error = False
     for line in proc.stdout:
         if line.strip():
             log(line.rstrip())
-    if proc.wait() != 0:
-        raise RenderError(f"csdm exited with code {proc.returncode} — see the log above.")
+            game_error = game_error or bool(GAME_ERROR.match(line))
+    code = proc.wait()
+    if game_error:
+        raise RenderError(GAME_ERROR_HINT)
+    if code != 0:
+        raise RenderError(f"csdm exited with code {code} — see the log above.")
 
 
 def _csdm() -> str:
@@ -178,6 +191,10 @@ def render_per_clip(demo_path, steamid, player_name, highlights, out_dir: Path,
 
 def render(demo_path, steamid, player_name, highlights, out_dir: Path,
            settings: RenderSettings, log: Log) -> list[RenderedSegment]:
-    mode = os.environ.get("CS2HL_RENDER_MODE", "config")
-    fn = render_per_clip if mode == "per-clip" else render_with_config
+    mode = os.environ.get("CS2HL_RENDER_MODE", "hlae")
+    if mode == "hlae":
+        from .hlae import render_hlae  # hlae imports from this module
+        fn = render_hlae
+    else:
+        fn = render_per_clip if mode == "per-clip" else render_with_config
     return fn(demo_path, steamid, player_name, highlights, out_dir, settings, log)

@@ -1,5 +1,6 @@
 """Local web app: python -m uvicorn app.main:app  (or run.bat)"""
 import json
+import os
 import shutil
 import threading
 import uuid
@@ -12,7 +13,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .config import DEMOS_DIR, find_csdm, find_ffmpeg, find_ffprobe, find_font
+from .config import DEMOS_DIR, find_cs2, find_csdm, find_ffmpeg, find_ffprobe, find_font, find_hlae
 from .highlights import Highlight, Options, detect_highlights
 from .jobs import JobManager
 from .parser import MatchData, parse_demo
@@ -81,7 +82,8 @@ def _highlight_dict(h: Highlight) -> dict:
 
 @app.get("/api/status")
 def status():
-    return {"csdm": find_csdm(), "ffmpeg": find_ffmpeg(), "ffprobe": find_ffprobe(), "font": find_font()}
+    return {"mode": os.environ.get("CS2HL_RENDER_MODE", "hlae"), "csdm": find_csdm(), "hlae": find_hlae(),
+            "cs2": find_cs2(), "ffmpeg": find_ffmpeg(), "ffprobe": find_ffprobe(), "font": find_font()}
 
 
 @app.get("/api/demos")

@@ -88,7 +88,7 @@ class JobManager:
         work = RENDERS_DIR / job.id
         s = job.settings
         job.status = "recording"
-        job.add_log("Starting CS2 through CS Demo Manager. Don't use the game window while it records.")
+        job.add_log("Starting CS2. Don't use the game window while it records.")
         segments = render(job.demo_path, job.steamid, job.player_name, job.highlights,
                           work / "raw", s, job.add_log)
 

@@ -1,5 +1,6 @@
 """Paths and default settings. Override any path with an environment variable."""
 import os
+import re
 import shutil
 from pathlib import Path
 
@@ -39,6 +40,38 @@ def find_ffprobe():
     ffmpeg = find_ffmpeg()
     sibling = str(Path(ffmpeg).with_name("ffprobe.exe")) if ffmpeg else None
     return _first_existing([os.environ.get("FFPROBE_PATH"), sibling, shutil.which("ffprobe")])
+
+
+def find_hlae():
+    home = Path.home()
+    return _first_existing([
+        os.environ.get("HLAE_PATH"),
+        home / ".csdm" / "hlae" / "HLAE.exe",  # the copy CS Demo Manager installs
+        Path(os.environ.get("LOCALAPPDATA", "")) / "HLAE" / "HLAE.exe",
+        r"C:\Program Files\HLAE\HLAE.exe",
+    ])
+
+
+def _steam_libraries():
+    steam = None
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam") as k:
+            steam = Path(winreg.QueryValueEx(k, "SteamPath")[0])
+    except OSError:
+        pass
+    steam = steam or Path(r"C:\Program Files (x86)\Steam")
+    libs = [steam]
+    vdf = steam / "steamapps" / "libraryfolders.vdf"
+    if vdf.is_file():
+        for m in re.finditer(r'"path"\s+"([^"]+)"', vdf.read_text(encoding="utf-8", errors="replace")):
+            libs.append(Path(m.group(1).replace("\\\\", "\\")))
+    return libs
+
+
+def find_cs2():
+    rel = Path("steamapps", "common", "Counter-Strike Global Offensive", "game", "bin", "win64", "cs2.exe")
+    return _first_existing([os.environ.get("CS2_PATH"), *(lib / rel for lib in _steam_libraries())])
 
 
 def find_font():

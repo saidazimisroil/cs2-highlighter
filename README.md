@@ -4,9 +4,9 @@ Turns a CS2 `.dem` file into a 16:9 highlight video of one player: it finds thei
 (multi-kills, won clutches, wallbangs, noscopes…), has CS2 record them from that player's view,
 and joins the clips with a title card, labels and crossfades.
 
-A demo has no video in it, so the footage is recorded by CS2 itself: CS Demo Manager opens the
-game, plays the demo, records with HLAE and closes it again. You don't touch the game, but the
-PC is busy while it records — start a render and leave it.
+A demo has no video in it, so the footage is recorded by CS2 itself: HLAE opens the game, the
+demo jumps from one highlight to the next while HLAE records each one, then the game closes.
+You don't touch the game, but the PC is busy while it records — start a render and leave it.
 
 ## One-time setup
 
@@ -57,13 +57,29 @@ Rounds scoring 3+ or with a special kill qualify; the top 8 are pre-selected. Ki
 10 s apart become separate segments, so a slow ace or clutch skips the walking in between.
 Tune the numbers at the top of `app/highlights.py`.
 
+## Recording modes
+
+Set `CS2HL_RENDER_MODE` before `run.bat` to pick how CS2 is driven:
+
+- **`hlae`** (default): the app launches CS2 through HLAE itself, with a generated cfg
+  (`game\csgo\cfg\cs2hl\`) that uses HLAE's `mirv_cmd` to jump to each segment and record it.
+  The demo only ever jumps forward, so the long jump to the first highlight happens once. Needs
+  HLAE (`HLAE_PATH`, or CS Demo Manager's copy in `%USERPROFILE%\.csdm\hlae`) and CS2
+  (found through Steam, or `CS2_PATH`). CS Demo Manager itself isn't used.
+- **`config`**: one `csdm video --config-file` run. CS Demo Manager reloads the demo from the
+  start for every segment, so long demos take much longer.
+- **`per-clip`**: one `csdm video` run per segment (slowest; CS2 restarts each time).
+
 ## If recording fails
 
-- **Wrong number of video files**: switch to one recording per segment (slower, CS2 restarts
-  each time): set `CS2HL_RENDER_MODE=per-clip` before `run.bat`.
-- **CS2 crashes or the demo won't play**: usually a CS2 update broke HLAE / CS Demo Manager's
-  plugin. Update both, and re-try the manual test video from setup step 4.
-- The exact config sent to CS Demo Manager is saved as `data\renders\<job>\csdm-config.json`.
+- **"Loader could not create requested process" / Access denied**: anti-cheat is blocking HLAE.
+  For FACEIT, choose *Disable driver* from its tray icon and reboot (turn it back on before
+  playing FACEIT).
+- **CS2 crashes or the demo won't play**: usually a CS2 update broke HLAE (or CS Demo Manager's
+  plugin in the `config` / `per-clip` modes). Update HLAE and try again.
+- **Wrong number of video files** (`config` mode): try `CS2HL_RENDER_MODE=per-clip`.
+- The generated cfgs are in `game\csgo\cfg\cs2hl\` while recording (`hlae` mode); the config sent
+  to CS Demo Manager is saved as `data\renders\<job>\csdm-config.json` (other modes).
 
 ## Testing without CS2
 
@@ -75,7 +91,8 @@ rest of the pipeline: `set CSDM_PATH=%CD%\scripts\fake_csdm.bat` then `run.bat`.
 ```
 app/parser.py      demo → players, rounds (with alive rosters), deaths   (demoparser2)
 app/highlights.py  scoring, clutch detection, clip segments              (pure functions)
-app/render.py      CS Demo Manager config + `csdm video` runner
+app/render.py      recording modes; CS Demo Manager config + `csdm video` runner
+app/hlae.py        `hlae` mode: cfg generation + launching CS2 through HLAE
 app/compile.py     FFmpeg title card, labels, crossfades
 app/jobs.py        one background worker (CS2 can only run once)
 app/main.py        FastAPI API + serves app/static
