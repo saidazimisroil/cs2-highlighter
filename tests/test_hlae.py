@@ -58,6 +58,16 @@ def test_prep_cfg_focuses_player_and_names_outputs():
     assert "mirv_streams record screen settings cs2hl1" in prep
 
 
+def test_full_hud_is_shown():
+    assert "cl_draw_only_deathnotices 0" in build([(5000, 6000)])["setup.cfg"]
+
+
+def test_player_voices_are_enabled_before_the_demo_loads():
+    init = build([(5000, 6000)])["init.cfg"]
+    assert init.index("tv_listen_voice_indices -1") < init.index("playdemo")
+    assert init.index("tv_listen_voice_indices_h -1") < init.index("playdemo")
+
+
 def test_kill_feed_shows_only_the_player():
     setup = build([(5000, 6000)])["setup.cfg"]
     assert "mirv_deathmsg filter add block=1" in setup

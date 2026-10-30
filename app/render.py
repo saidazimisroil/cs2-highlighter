@@ -81,20 +81,20 @@ def build_config(demo_path: str, steamid: str, player_name: str, highlights: lis
                 "number": len(sequences) + 1,
                 "startTick": seg.start_tick,
                 "endTick": seg.end_tick,
-                "showOnlyDeathNotices": True,
+                "showOnlyDeathNotices": False,
                 "deathNoticesDuration": 5,
                 "playersOptions": [{
                     "steamId": steamid,
                     "playerName": player_name,
                     "showKill": True,
                     "highlightKill": True,
-                    "isVoiceEnabled": False,
+                    "isVoiceEnabled": True,
                 }],
                 "playerCameras": [{"tick": seg.start_tick, "playerSteamId": steamid, "playerName": player_name}],
                 "cameras": [],
                 "showXRay": False,
                 "showAssists": True,
-                "playerVoicesEnabled": False,
+                "playerVoicesEnabled": True,
                 "recordAudio": True,
             })
             order.append((h.id, i))
@@ -177,8 +177,8 @@ def render_per_clip(demo_path, steamid, player_name, highlights, out_dir: Path,
                    "--framerate", str(settings.framerate),
                    "--ffmpeg-crf", str(settings.crf), "--ffmpeg-video-codec", "libx264",
                    "--ffmpeg-audio-codec", "aac", "--ffmpeg-video-container", "mp4",
-                   "--show-only-death-notices", "--no-show-x-ray", "--record-audio",
-                   "--no-player-voices", "--close-game-after-recording"]
+                   "--no-show-only-death-notices", "--no-show-x-ray", "--record-audio",
+                   "--player-voices", "--close-game-after-recording"]
             if ffmpeg:
                 cmd += ["--ffmpeg-executable-path", ffmpeg]
             _run(cmd, log)

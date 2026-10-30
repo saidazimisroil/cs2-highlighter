@@ -30,12 +30,14 @@ def test_ace_with_headshots_and_label():
     assert h.segments[0].end_tick == 2000 + 4 * S + 2 * S
 
 
-def test_far_apart_kills_become_separate_segments():
+def test_far_apart_kills_stay_in_one_uncut_segment():
     rnd = make_round()
     deaths = [kill(2000, "e1"), kill(2000 + 30 * S, "e2"), kill(2000 + 31 * S, "e3")]
     h = score_round(deaths, rnd, ME, Options())
     assert "3K" in h.label
-    assert len(h.segments) == 2
+    assert len(h.segments) == 1
+    assert h.segments[0].start_tick == 2000 - 4 * S
+    assert h.segments[0].end_tick == 2000 + 31 * S + 2 * S
 
 
 def test_teamkills_and_bomb_kills_ignored():

@@ -53,9 +53,12 @@ graphics, it just takes longer than real time. 720p is the default for that reas
 Per round, for the chosen player: 1 point per kill; +0.3 headshot, +0.8 wallbang, +0.6 through
 smoke, +0.8 while flashed, +0.8 airborne, +1.0 noscope, +1.5 knife/zeus; +2 / +4 / +7 for a
 3K / 4K / ace; +2 / +4 / +6 / +9 for a won 1v2 / 1v3 / 1v4 / 1v5; +1 for two kills within 2 s.
-Rounds scoring 3+ or with a special kill qualify; the top 8 are pre-selected. Kills more than
-10 s apart become separate segments, so a slow ace or clutch skips the walking in between.
-Tune the numbers at the top of `app/highlights.py`.
+Rounds scoring 3+ or with a special kill qualify; the top 8 are pre-selected. Each round is one
+uncut clip from before the first kill to after the last, so a slow ace or clutch keeps the
+walking in between. Tune the numbers at the top of `app/highlights.py`.
+
+Clips show the full HUD and include player voices (`tv_listen_voice_indices -1`). A demo only
+has voices if the server recorded them, so some demos stay silent.
 
 ## Recording modes
 

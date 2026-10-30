@@ -16,8 +16,6 @@ POINTS_CLUTCH = {2: 2.0, 3: 4.0, 4: 6.0, 5: 9.0}
 POINTS_FAST = 1.0  # two kills within FAST_GAP_S
 
 FAST_GAP_S = 2
-CLUSTER_GAP_S = 10  # kills further apart than this become separate segments
-MERGE_GAP_S = 3  # segments closer than this are joined
 CLUTCH_LEAD_S = 1
 CLUTCH_MAX_EXTRA_S = 8
 
@@ -100,31 +98,15 @@ def find_clutch(deaths: list[Death], rnd: Round, steamid: str) -> tuple[int, int
     return found
 
 
-def _segments(kills: list[Death], rnd: Round, clutch_tick: int | None, opts: Options) -> list[Segment]:
-    pre, post = int(opts.pre_s * TICKRATE), int(opts.post_s * TICKRATE)
-    clusters: list[list[Death]] = []
-    for k in kills:
-        if clusters and k.tick - clusters[-1][-1].tick <= CLUSTER_GAP_S * TICKRATE:
-            clusters[-1].append(k)
-        else:
-            clusters.append([k])
-
-    segs: list[Segment] = []
-    clutch_done = clutch_tick is None
-    for c in clusters:
-        start, end = c[0].tick - pre, c[-1].tick + post
-        if not clutch_done and c[-1].tick >= clutch_tick:
-            # show the moment they were left alone, but not a long walk before it
-            lead = max(clutch_tick - CLUTCH_LEAD_S * TICKRATE, start - CLUTCH_MAX_EXTRA_S * TICKRATE)
-            start = min(start, lead)
-            clutch_done = True
-        start = max(start, rnd.start_tick)
-        end = min(end, rnd.limit_tick - 1)
-        if segs and start - segs[-1].end_tick < MERGE_GAP_S * TICKRATE:
-            segs[-1].end_tick = max(segs[-1].end_tick, end)
-        else:
-            segs.append(Segment(start, end))
-    return segs
+def _segment(kills: list[Death], rnd: Round, clutch_tick: int | None, opts: Options) -> Segment:
+    """One uncut clip: from before the round's first kill until after its last."""
+    start = kills[0].tick - int(opts.pre_s * TICKRATE)
+    end = kills[-1].tick + int(opts.post_s * TICKRATE)
+    if clutch_tick is not None:
+        # show the moment they were left alone, but not a long walk before it
+        lead = max(clutch_tick - CLUTCH_LEAD_S * TICKRATE, start - CLUTCH_MAX_EXTRA_S * TICKRATE)
+        start = min(start, lead)
+    return Segment(max(start, rnd.start_tick), min(end, rnd.limit_tick - 1))
 
 
 def score_round(deaths: list[Death], rnd: Round, steamid: str, opts: Options) -> Highlight | None:
@@ -171,7 +153,7 @@ def score_round(deaths: list[Death], rnd: Round, steamid: str, opts: Options) ->
     if len(parts) == 1:
         parts.append(f"{kills[0].weapon.upper()} KILL" + (" (HS)" if kills[0].headshot else ""))
 
-    segs = _segments(kills, rnd, clutch[0] if won_clutch else None, opts)
+    seg = _segment(kills, rnd, clutch[0] if won_clutch else None, opts)
     return Highlight(
         id=f"r{rnd.number}",
         round=rnd.number,
@@ -180,7 +162,7 @@ def score_round(deaths: list[Death], rnd: Round, steamid: str, opts: Options) ->
         label=" · ".join(parts),
         tags=specials,
         clutch=won_clutch,
-        segments=segs,
+        segments=[seg],
     )
 
 

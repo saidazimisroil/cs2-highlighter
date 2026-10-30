@@ -34,7 +34,7 @@ def build_cfgs(demo_path, steamid: str, player_name: str, segments: list[tuple[i
         "volume 1",
         "demo_ui_mode 0",
         "cl_demo_predict 0",
-        "cl_draw_only_deathnotices 1",
+        "cl_draw_only_deathnotices 0",  # keep the full HUD
         "cl_hud_telemetry_frametime_show 0",
         "cl_hud_telemetry_net_misdelivery_show 0",
         "cl_hud_telemetry_ping_show 0",
@@ -80,6 +80,8 @@ def build_cfgs(demo_path, steamid: str, player_name: str, segments: list[tuple[i
 
     files["init.cfg"] = ["mirv_cmd clear",
                          *(f'mirv_cmd addAtTick {t} "{c}"' for t, c in schedule),
+                         "tv_listen_voice_indices -1",  # before playdemo: hear every player's mic
+                         "tv_listen_voice_indices_h -1",
                          "demo_ui_mode 0",  # before playdemo, or the playback bar stays up
                          f'playdemo "{_slash(Path(demo_path))}"']
     return {k: "\n".join(v) + "\n" for k, v in files.items()}
