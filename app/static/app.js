@@ -35,11 +35,16 @@ function busyDemo(msg) {
 
 async function openDemo(promise) {
   busyDemo("Reading demo… (a few seconds)");
+  $("#demo-warning").classList.add("hidden");
   try {
     const demo = await promise;
     state.demo = demo;
     state.steamid = null;
     busyDemo(`${demo.name} — ${demo.map}, ${demo.rounds} rounds`);
+    if (demo.warning) {
+      $("#demo-warning").textContent = "⚠ " + demo.warning;
+      show("#demo-warning");
+    }
     renderPlayers();
     $("#step-highlights").classList.add("hidden");
     show("#step-player");

@@ -74,6 +74,19 @@ def find_cs2():
     return _first_existing([os.environ.get("CS2_PATH"), *(lib / rel for lib in _steam_libraries())])
 
 
+def find_cs2_version() -> int | None:
+    """Installed CS2 version, numbered like demos: PatchVersion=1.41.9.4 -> 14194."""
+    cs2 = find_cs2()
+    if not cs2:
+        return None
+    try:
+        text = (Path(cs2).parents[2] / "csgo" / "steam.inf").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    m = re.search(r"^PatchVersion=([\d.]+)", text, re.M)
+    return int(m.group(1).replace(".", "")) if m else None
+
+
 def find_font():
     fonts = Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts"
     return _first_existing([

@@ -50,6 +50,7 @@ class MatchData:
     players: list[Player]
     rounds: list[Round]
     deaths: list[Death]
+    demo_version: int | None = None  # CS2 version the demo was recorded on, e.g. 14193
 
     def player(self, steamid: str) -> Player | None:
         return next((p for p in self.players if p.steamid == steamid), None)
@@ -164,4 +165,6 @@ def parse_demo(path: str | Path) -> MatchData:
             players.append(Player(sid, _str(r.name), int(r.team_number) if not pd.isna(r.team_number) else 0))
     players.sort(key=lambda p: (p.team, p.name.lower()))
 
-    return MatchData(header.get("map_name", "unknown"), players, rounds, deaths)
+    version = str(header.get("patch_version", ""))
+    return MatchData(header.get("map_name", "unknown"), players, rounds, deaths,
+                     int(version) if version.isdigit() else None)

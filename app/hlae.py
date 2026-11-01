@@ -187,7 +187,8 @@ def render_hlae(demo_path, steamid, player_name, highlights, out_dir: Path,
             crashed = set(cs2.parent.glob("*.mdmp")) - dumps_before
             if crashed:
                 raise RenderError(f"CS2 crashed during recording (crash dump: {next(iter(crashed)).name}). "
-                                  "A CS2 update may have broken HLAE: update HLAE and try again.")
+                                  "Try another demo: if that works, CS2 can't play this one. If every demo "
+                                  "crashes, a CS2 update may have broken HLAE, so update HLAE.")
             raise RenderError(f"Segment {n} wasn't recorded ({video} is missing). CS2 may have closed early.")
         takes = sorted((out_dir / str(n)).glob("take*/audio.wav"))
         out.append(RenderedSegment(hid, i, _mux(video, takes[-1] if takes else None, out_dir / f"{n}.mp4", log)))

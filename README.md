@@ -78,8 +78,12 @@ Set `CS2HL_RENDER_MODE` before `run.bat` to pick how CS2 is driven:
 - **"Loader could not create requested process" / Access denied**: anti-cheat is blocking HLAE.
   For FACEIT, choose *Disable driver* from its tray icon and reboot (turn it back on before
   playing FACEIT).
-- **CS2 crashes or the demo won't play**: usually a CS2 update broke HLAE (or CS Demo Manager's
-  plugin in the `config` / `per-clip` modes). Update HLAE and try again.
+- **The app warns about a demo's version**: CS2 itself crashes loading that demo, even without
+  this app. Keep the demo and try after the next CS2 update. Known pairs are in `CRASHING_DEMOS`
+  in `app/render.py`; the warning stops by itself once CS2 updates.
+- **CS2 crashes on one demo**: try another. If that one works, CS2 can't play the first demo.
+- **CS2 crashes on every demo**: usually a CS2 update broke HLAE (or CS Demo Manager's plugin in
+  the `config` / `per-clip` modes). Update HLAE and try again.
 - **Wrong number of video files** (`config` mode): try `CS2HL_RENDER_MODE=per-clip`.
 - The generated cfgs are in `game\csgo\cfg\cs2hl\` while recording (`hlae` mode); the config sent
   to CS Demo Manager is saved as `data\renders\<job>\csdm-config.json` (other modes).

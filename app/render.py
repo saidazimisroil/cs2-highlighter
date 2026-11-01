@@ -28,6 +28,17 @@ GAME_ERROR_HINT = ("CS2 crashed or closed during recording (CS Demo Manager repo
                    "This usually means a CS2 update broke HLAE or CS Demo Manager's plugin: update "
                    "both in CS Demo Manager's settings, record a short test video there, then try again.")
 
+# Installed CS2 version -> demo versions it crashes on while loading, with or without HLAE.
+CRASHING_DEMOS = {14194: {14193}}
+
+
+def demo_warning(demo_version: int | None, game_version: int | None) -> str | None:
+    if demo_version not in CRASHING_DEMOS.get(game_version, ()):
+        return None
+    return (f"This demo was recorded on CS2 version {demo_version}, and your CS2 (version {game_version}) "
+            "crashes when it loads these demos, even without this app. Rendering will fail until a CS2 "
+            "update fixes it. Keep the demo and try again after the next update.")
+
 
 @dataclass
 class RenderSettings:

@@ -13,11 +13,12 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .config import DEMOS_DIR, find_cs2, find_csdm, find_ffmpeg, find_ffprobe, find_font, find_hlae
+from .config import (DEMOS_DIR, find_cs2, find_cs2_version, find_csdm, find_ffmpeg, find_ffprobe, find_font,
+                     find_hlae)
 from .highlights import Highlight, Options, detect_highlights
 from .jobs import JobManager
 from .parser import MatchData, parse_demo
-from .render import RenderSettings
+from .render import RenderSettings, demo_warning
 
 STATIC = Path(__file__).parent / "static"
 INDEX = DEMOS_DIR / "index.json"
@@ -123,7 +124,8 @@ async def get_demo(demo_id: str):
         "name": _load_index()[demo_id]["name"],
         "map": m.map_name,
         "rounds": len(m.rounds),
-        "players": [asdict(p) | {"score": m.score_for(p.steamid)} for p in m.players],
+        "warning": demo_warning(m.demo_version, find_cs2_version()),
+        "players":[asdict(p) | {"score": m.score_for(p.steamid)} for p in m.players],
     }
 
 
