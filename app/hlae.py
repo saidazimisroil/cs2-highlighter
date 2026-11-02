@@ -14,6 +14,11 @@ from .config import DATA_DIR, TICKRATE, find_cs2, find_ffmpeg, find_hlae
 from .render import RenderedSegment, RenderError, RenderSettings, Log
 
 MIN_TICK = 96            # commands right after the demo loads can be skipped by the game
+# FACEIT demos start paused; ~3 s after loading CS2 then skips back to tick 0 (before the first
+# full packet) and crashes in engine2.dll. Resuming as the demo loads avoids it, and does
+# nothing to demos that aren't paused. Tick 0 breaks the MIN_TICK rule on purpose: a paused
+# demo never reaches MIN_TICK.
+RESUME_TICK = 0
 SEEK_LEAD = 2 * TICKRATE  # land this far before a segment so the scene settles after a jump
 PREP_LEAD = TICKRATE      # set camera / recording target this far before recording starts
 CFG_DIR = "cs2hl"        # inside game/csgo/cfg, wiped before every run
@@ -51,7 +56,7 @@ def build_cfgs(demo_path, steamid: str, player_name: str, segments: list[tuple[i
         f"mirv_streams record fps {settings.framerate}",
     ]
     files = {"setup.cfg": setup}
-    schedule = [(MIN_TICK, f"exec {CFG_DIR}/setup")]
+    schedule = [(RESUME_TICK, "demo_resume"), (MIN_TICK, f"exec {CFG_DIR}/setup")]
     pos = MIN_TICK
     for n, (start, end) in enumerate(segments, 1):
         target = start - SEEK_LEAD

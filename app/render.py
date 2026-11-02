@@ -29,7 +29,8 @@ GAME_ERROR_HINT = ("CS2 crashed or closed during recording (CS Demo Manager repo
                    "both in CS Demo Manager's settings, record a short test video there, then try again.")
 
 # Installed CS2 version -> demo versions it crashes on while loading, with or without HLAE.
-CRASHING_DEMOS = {14194: {14193}}
+# (14194 on 14193 demos turned out to be the paused-FACEIT-demo crash, fixed in hlae.py.)
+CRASHING_DEMOS: dict[int, set[int]] = {}
 
 
 def demo_warning(demo_version: int | None, game_version: int | None) -> str | None:

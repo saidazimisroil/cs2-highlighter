@@ -26,7 +26,8 @@ def test_clean_run_passes():
     assert log[-1] == "Done"
 
 
-def test_warns_only_for_the_known_crashing_pair():
+def test_warns_only_for_the_known_crashing_pair(monkeypatch):
+    monkeypatch.setattr("app.render.CRASHING_DEMOS", {14194: {14193}})
     assert "14193" in demo_warning(14193, 14194)
     assert demo_warning(14192, 14194) is None  # other demos play on this CS2
     assert demo_warning(14193, 14195) is None  # gone once CS2 updates

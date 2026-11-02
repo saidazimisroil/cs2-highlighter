@@ -2,7 +2,7 @@ import re
 from pathlib import Path
 
 from app.config import TICKRATE as S
-from app.hlae import MIN_TICK, PREP_LEAD, SEEK_LEAD, build_cfgs
+from app.hlae import MIN_TICK, PREP_LEAD, RESUME_TICK, SEEK_LEAD, build_cfgs
 from app.render import RenderSettings
 
 STEAMID = "76561199396077107"
@@ -21,6 +21,7 @@ def build(segments, name="DIAS_GEEK", demo=r"C:\demos\match.dem"):
 def test_jumps_to_each_segment_and_records_it():
     cfgs = build([(136828, 137724), (144413, 145309)])
     assert schedule(cfgs) == [
+        (RESUME_TICK, "demo_resume"),
         (MIN_TICK, "exec cs2hl/setup"),
         (MIN_TICK + 1, f"demo_gototick {136828 - SEEK_LEAD}"),
         (136828 - PREP_LEAD, "exec cs2hl/prep1"),
@@ -44,9 +45,14 @@ def test_close_segments_play_through_instead_of_jumping():
 
 
 def test_segment_near_demo_start_keeps_ticks_ordered():
-    ticks = [t for t, _ in schedule(build([(50, 400)]))]
+    ticks = [t for t, _ in schedule(build([(50, 400)]))][1:]  # after the tick-0 resume
     assert ticks == sorted(ticks) and ticks[0] == MIN_TICK
     assert all(t >= MIN_TICK for t in ticks)
+
+
+def test_paused_demo_is_resumed_as_it_loads():
+    # FACEIT demos start paused, and CS2 crashes when it skips back to tick 0 a few seconds in.
+    assert schedule(build([(136828, 137724)]))[0] == (RESUME_TICK, "demo_resume")
 
 
 def test_prep_cfg_focuses_player_and_names_outputs():
