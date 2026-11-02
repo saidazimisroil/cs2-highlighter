@@ -100,7 +100,8 @@ $("#teams").onclick = (e) => {
 async function loadHighlights() {
   show("#step-highlights");
   $("#highlights").innerHTML = `<li class="muted">Finding highlights…</li>`;
-  const q = new URLSearchParams({ steamid: state.steamid, pre_s: $("#pre").value, post_s: $("#post").value });
+  const q = new URLSearchParams({ steamid: state.steamid, pre_s: $("#pre").value, post_s: $("#post").value,
+                                   mvp_s: $("#mvp").value });
   const keep = new Set(state.highlights.filter((h) => h.selected).map((h) => h.id));
   const prevPlayer = state.highlightsFor;
   state.highlights = await api(`/api/demos/${state.demo.id}/highlights?${q}`);
@@ -138,7 +139,7 @@ $("#highlights").onchange = (e) => {
   e.target.closest(".hl").classList.toggle("on", h.selected);
   updateSummary();
 };
-$("#pre").onchange = $("#post").onchange = () => state.steamid && loadHighlights();
+$("#pre").onchange = $("#post").onchange = $("#mvp").onchange = () => state.steamid && loadHighlights();
 
 function updateSummary() {
   const sel = state.highlights.filter((h) => h.selected);
@@ -157,6 +158,7 @@ $("#render").onclick = async () => {
     highlight_ids: state.highlights.filter((h) => h.selected).map((h) => h.id),
     pre_s: +$("#pre").value,
     post_s: +$("#post").value,
+    mvp_s: +$("#mvp").value,
     width, height, framerate,
   };
   $("#render").disabled = true;

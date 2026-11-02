@@ -115,3 +115,23 @@ def test_selection_picks_top_scores_and_special_singles():
 
     hs = detect_highlights(match, ME, Options(max_clips=1))
     assert [h.round for h in hs if h.selected] == [2]
+
+
+def test_mvp_music_plays_when_the_round_ends_soon_after_the_last_kill():
+    rnd = make_round(end=2000 + 3 * S)  # round decided 3 s after my kill
+    h = score_round([kill(2000, "e1")], rnd, ME, Options(mvp_s=6))
+    assert h.segments[0].end_tick == rnd.end_tick + 6 * S
+    h = score_round([kill(2000, "e1")], rnd, ME, Options(mvp_s=0))
+    assert h.segments[0].end_tick == 2000 + 2 * S
+
+
+def test_mvp_music_skipped_when_the_round_ends_long_after():
+    rnd = make_round(end=2000 + 40 * S)
+    h = score_round([kill(2000, "e1")], rnd, ME, Options(mvp_s=10))
+    assert h.segments[0].end_tick == 2000 + 2 * S
+
+
+def test_mvp_music_stops_at_the_next_round():
+    rnd = make_round(end=2000 + S)  # next round starts 10 s after round end
+    h = score_round([kill(2000, "e1")], rnd, ME, Options(mvp_s=20))
+    assert h.segments[0].end_tick == rnd.limit_tick - 1

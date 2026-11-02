@@ -125,16 +125,17 @@ async def get_demo(demo_id: str):
         "map": m.map_name,
         "rounds": len(m.rounds),
         "warning": demo_warning(m.demo_version, find_cs2_version()),
-        "players":[asdict(p) | {"score": m.score_for(p.steamid)} for p in m.players],
+        "players": [asdict(p) | {"score": m.score_for(p.steamid)} for p in m.players],
     }
 
 
 @app.get("/api/demos/{demo_id}/highlights")
-async def get_highlights(demo_id: str, steamid: str, max_clips: int = 8, pre_s: float = 4, post_s: float = 2):
+async def get_highlights(demo_id: str, steamid: str, max_clips: int = 8, pre_s: float = 4, post_s: float = 2,
+                         mvp_s: float = 10):
     m = await _match(demo_id)
     if not m.player(steamid):
         raise HTTPException(404, "Player not in this demo")
-    hs = detect_highlights(m, steamid, Options(max_clips=max_clips, pre_s=pre_s, post_s=post_s))
+    hs = detect_highlights(m, steamid, Options(max_clips=max_clips, pre_s=pre_s, post_s=post_s, mvp_s=mvp_s))
     return [_highlight_dict(h) for h in hs]
 
 
@@ -144,6 +145,7 @@ class JobIn(BaseModel):
     highlight_ids: list[str]
     pre_s: float = 4
     post_s: float = 2
+    mvp_s: float = 10
     width: int = 1280
     height: int = 720
     framerate: int = 60
@@ -156,7 +158,7 @@ async def create_job(body: JobIn):
     if not player:
         raise HTTPException(404, "Player not in this demo")
     wanted = set(body.highlight_ids)
-    hs = [h for h in detect_highlights(m, body.steamid, Options(pre_s=body.pre_s, post_s=body.post_s))
+    hs = [h for h in detect_highlights(m, body.steamid, Options(pre_s=body.pre_s, post_s=body.post_s, mvp_s=body.mvp_s))
           if h.id in wanted]
     if not hs:
         raise HTTPException(400, "Pick at least one highlight")

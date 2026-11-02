@@ -18,6 +18,7 @@ POINTS_FAST = 1.0  # two kills within FAST_GAP_S
 FAST_GAP_S = 2
 CLUTCH_LEAD_S = 1
 CLUTCH_MAX_EXTRA_S = 8
+MVP_MAX_GAP_S = 15  # keep the round-end music only if the round ended this soon after the last kill
 
 SPECIAL_TAGS = [  # (flag, label) in display order
     ("wallbang", "WALLBANG"), ("noscope", "NOSCOPE"), ("smoke", "THROUGH SMOKE"),
@@ -55,6 +56,7 @@ class Options:
     min_score: float = 3.0
     pre_s: float = 4.0
     post_s: float = 2.0
+    mvp_s: float = 10.0  # seconds after round end, for the MVP music; 0 = off
 
 
 def is_melee(weapon: str) -> bool:
@@ -99,9 +101,11 @@ def find_clutch(deaths: list[Death], rnd: Round, steamid: str) -> tuple[int, int
 
 
 def _segment(kills: list[Death], rnd: Round, clutch_tick: int | None, opts: Options) -> Segment:
-    """One uncut clip: from before the round's first kill until after its last."""
+    """One uncut clip: from before the round's first kill until after its last (and the MVP music)."""
     start = kills[0].tick - int(opts.pre_s * TICKRATE)
     end = kills[-1].tick + int(opts.post_s * TICKRATE)
+    if opts.mvp_s > 0 and rnd.end_tick - kills[-1].tick <= MVP_MAX_GAP_S * TICKRATE:
+        end = max(end, rnd.end_tick + int(opts.mvp_s * TICKRATE))  # let the MVP music play
     if clutch_tick is not None:
         # show the moment they were left alone, but not a long walk before it
         lead = max(clutch_tick - CLUTCH_LEAD_S * TICKRATE, start - CLUTCH_MAX_EXTRA_S * TICKRATE)
