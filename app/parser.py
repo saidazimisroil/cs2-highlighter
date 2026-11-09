@@ -7,6 +7,7 @@ import pandas as pd
 from demoparser2 import DemoParser
 
 T, CT = 2, 3
+END_MARGIN = 64  # ticks (1 s) kept free at the end of the demo
 _WINNER = {"T": T, "TERRORIST": T, "2": T, "CT": CT, "3": CT}
 
 
@@ -98,6 +99,15 @@ def _match_start_tick(parser: DemoParser, events: set[str]) -> int:
     return 0
 
 
+def _last_tick(parser: DemoParser) -> int:
+    """Last tick with player data, i.e. where playback ends (the header doesn't say)."""
+    try:
+        ticks = parser.parse_ticks(["game_time"])["tick"]
+    except Exception:
+        return 0
+    return int(ticks.max()) if len(ticks) else 0
+
+
 def parse_demo(path: str | Path) -> MatchData:
     parser = DemoParser(str(path))
     header = parser.parse_header()
@@ -116,7 +126,7 @@ def parse_demo(path: str | Path) -> MatchData:
     end_rows = sorted((int(r.tick), _str(r.winner).upper()) for r in ends.itertuples() if int(r.tick) > 0)
 
     deaths_df = parser.parse_event("player_death")
-    last_tick = int(deaths_df["tick"].max()) if len(deaths_df) else (starts[-1] if starts else 0)
+    last_tick = _last_tick(parser) or (int(deaths_df["tick"].max()) if len(deaths_df) else 0)
 
     rosters: dict[int, dict[str, int]] = {t: {} for t in starts}
     if starts:
@@ -127,7 +137,10 @@ def parse_demo(path: str | Path) -> MatchData:
 
     rounds: list[Round] = []
     for i, start in enumerate(starts):
-        limit = starts[i + 1] if i + 1 < len(starts) else max(last_tick, start) + 10 * 64
+        # The last round ends with the demo, which often stops a few seconds after round end. Leave a
+        # second of margin: commands scheduled after the demo's last tick never run, so the
+        # recording wouldn't stop and CS2 wouldn't quit.
+        limit = starts[i + 1] if i + 1 < len(starts) else max(last_tick - END_MARGIN, start + 1)
         end_tick, winner = limit, None
         for tick, w in end_rows:
             if start < tick <= limit:

@@ -2,7 +2,7 @@ import re
 from pathlib import Path
 
 from app.config import TICKRATE as S
-from app.hlae import MIN_TICK, PREP_LEAD, RESUME_TICK, SEEK_LEAD, build_cfgs
+from app.hlae import MIN_TICK, PREP_LEAD, RESUME_TICK, SEEK_LEAD, _best_take, build_cfgs
 from app.render import RenderSettings
 
 STEAMID = "76561199396077107"
@@ -79,3 +79,13 @@ def test_kill_feed_shows_only_the_player():
     assert "mirv_deathmsg filter add block=1" in setup
     assert f"attackerMatch=x{STEAMID}" in setup
     assert "demo_ui_mode 0" in setup
+
+
+def test_empty_takes_left_at_demo_end_are_ignored(tmp_path):
+    # HLAE wrote a header-only take0001 next to the real audio when the demo ended.
+    for take, size in (("take0000", 15_000_000), ("take0001", 44)):
+        (tmp_path / take).mkdir()
+        (tmp_path / take / "audio.wav").write_bytes(b"\0" * size)
+    assert _best_take(tmp_path) == tmp_path / "take0000" / "audio.wav"
+    (tmp_path / "take0000" / "audio.wav").write_bytes(b"\0" * 44)
+    assert _best_take(tmp_path) is None  # no audio at all: keep the video only

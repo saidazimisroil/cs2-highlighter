@@ -24,6 +24,8 @@ PREP_LEAD = TICKRATE      # set camera / recording target this far before record
 CFG_DIR = "cs2hl"        # inside game/csgo/cfg, wiped before every run
 START_TIMEOUT = 180       # seconds for CS2 to appear after HLAE starts
 RUN_TIMEOUT = 3 * 3600
+IDLE_TIMEOUT = 45         # seconds CS2 may stay open after the last segment's video stops growing
+WAV_HEADER = 44           # bytes in a WAV file with no samples
 
 
 def _slash(p: Path) -> str:
@@ -117,6 +119,13 @@ def _ensure_ffmpeg_ini(hlae: Path) -> None:
     ini.write_text(f"[Ffmpeg]\nPath={ffmpeg}\n", encoding="utf-8")
 
 
+def _best_take(seg_dir: Path) -> Path | None:
+    """The take with the recording's audio. HLAE can leave extra header-only takes (44 bytes, no
+    samples) when the demo ends, and muxing one of those produces a file with no streams."""
+    takes = [w for w in seg_dir.glob("take*/audio.wav") if w.stat().st_size > WAV_HEADER]
+    return max(takes, key=lambda w: w.stat().st_size, default=None)
+
+
 def _mux(video: Path, wav: Path | None, out: Path, log: Log) -> Path:
     if wav is None:
         return video
@@ -173,6 +182,8 @@ def render_hlae(demo_path, steamid, player_name, highlights, out_dir: Path,
     log("CS2 started. It jumps to each segment and records it; don't use the game window.")
 
     seen = set()
+    last_video = out_dir / str(len(segs)) / "video.mp4"
+    last_size, idle_since = -1, time.time()
     while _running("cs2.exe"):
         if time.time() - t0 > RUN_TIMEOUT:
             _kill("cs2.exe")
@@ -181,6 +192,16 @@ def render_hlae(demo_path, steamid, player_name, highlights, out_dir: Path,
             if n not in seen and (out_dir / str(n) / "video.mp4").exists():
                 seen.add(n)
                 log(f"Recording segment {n}/{len(segs)}…")
+        # If the demo ends before the scheduled quit, CS2 sits in its menu. Close it once the last
+        # segment's video has stopped growing.
+        if last_video.exists():
+            size = last_video.stat().st_size
+            if size != last_size:
+                last_size, idle_since = size, time.time()
+            elif time.time() - idle_since > IDLE_TIMEOUT:
+                log("The last segment is done but CS2 is still open (the demo may have ended early); closing it.")
+                _kill("cs2.exe")
+                break
         time.sleep(2)
     _kill("HLAE.exe")
     log("CS2 closed.")
@@ -195,8 +216,7 @@ def render_hlae(demo_path, steamid, player_name, highlights, out_dir: Path,
                                   "Try another demo: if that works, CS2 can't play this one. If every demo "
                                   "crashes, a CS2 update may have broken HLAE, so update HLAE.")
             raise RenderError(f"Segment {n} wasn't recorded ({video} is missing). CS2 may have closed early.")
-        takes = sorted((out_dir / str(n)).glob("take*/audio.wav"))
-        out.append(RenderedSegment(hid, i, _mux(video, takes[-1] if takes else None, out_dir / f"{n}.mp4", log)))
+        out.append(RenderedSegment(hid, i, _mux(video, _best_take(out_dir / str(n)), out_dir / f"{n}.mp4", log)))
     for f in cfg_dir.glob("*.cfg"):
         f.unlink()
     return out
