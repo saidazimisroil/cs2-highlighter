@@ -9,7 +9,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -214,7 +214,12 @@ class FreshStaticFiles(StaticFiles):
 
 @app.get("/")
 def index():
-    return FileResponse(STATIC / "index.html", headers=NO_CACHE)
+    # Version the asset URLs too: a normal reload refetches the page but reuses cached scripts, so a
+    # copy cached before NO_CACHE existed would otherwise stay until the browser expires it.
+    html = (STATIC / "index.html").read_text(encoding="utf-8")
+    for name in ("app.js", "style.css"):
+        html = html.replace(f"/static/{name}", f"/static/{name}?v={(STATIC / name).stat().st_mtime_ns}")
+    return HTMLResponse(html, headers=NO_CACHE)
 
 
 app.mount("/static", FreshStaticFiles(directory=STATIC), name="static")
