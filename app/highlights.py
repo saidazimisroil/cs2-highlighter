@@ -44,6 +44,9 @@ class Highlight:
     clutch: int | None  # number of enemies in a won 1vN
     segments: list[Segment]
     selected: bool = False
+    death_tick: int | None = None  # when the player died this round; None if they survived
+    until_death: bool = False  # clip runs on until the player's death
+    until_round_end: bool = False  # clip runs on until the round ends
 
     @property
     def duration_s(self) -> float:
@@ -100,11 +103,14 @@ def find_clutch(deaths: list[Death], rnd: Round, steamid: str) -> tuple[int, int
     return found
 
 
-def _segment(kills: list[Death], rnd: Round, clutch_tick: int | None, opts: Options) -> Segment:
-    """One uncut clip: from before the round's first kill until after its last (and the MVP music)."""
+def _segment(kills: list[Death], rnd: Round, clutch_tick: int | None, opts: Options,
+             anchor_tick: int | None = None) -> Segment:
+    """One uncut clip: from before the round's first kill until after the anchor (by default its
+    last kill; later for the until-death / until-round-end options), plus the MVP music."""
+    anchor = max(kills[-1].tick, anchor_tick or 0)
     start = kills[0].tick - int(opts.pre_s * TICKRATE)
-    end = kills[-1].tick + int(opts.post_s * TICKRATE)
-    if opts.mvp_s > 0 and rnd.end_tick - kills[-1].tick <= MVP_MAX_GAP_S * TICKRATE:
+    end = anchor + int(opts.post_s * TICKRATE)
+    if opts.mvp_s > 0 and rnd.end_tick - anchor <= MVP_MAX_GAP_S * TICKRATE:
         end = max(end, rnd.end_tick + int(opts.mvp_s * TICKRATE))  # let the MVP music play
     if clutch_tick is not None:
         # show the moment they were left alone, but not a long walk before it
@@ -113,7 +119,8 @@ def _segment(kills: list[Death], rnd: Round, clutch_tick: int | None, opts: Opti
     return Segment(max(start, rnd.start_tick), min(end, rnd.limit_tick - 1))
 
 
-def score_round(deaths: list[Death], rnd: Round, steamid: str, opts: Options) -> Highlight | None:
+def score_round(deaths: list[Death], rnd: Round, steamid: str, opts: Options,
+                until_death: bool = False, until_round_end: bool = False) -> Highlight | None:
     round_deaths = [d for d in deaths if d.round == rnd.number]
     kills = player_kills(round_deaths, rnd, steamid)
     if not kills:
@@ -157,7 +164,10 @@ def score_round(deaths: list[Death], rnd: Round, steamid: str, opts: Options) ->
     if len(parts) == 1:
         parts.append(f"{kills[0].weapon.upper()} KILL" + (" (HS)" if kills[0].headshot else ""))
 
-    seg = _segment(kills, rnd, clutch[0] if won_clutch else None, opts)
+    death_tick = next((d.tick for d in round_deaths if d.victim == steamid), None)
+    until_death = until_death and death_tick is not None  # can't record until a death that never happened
+    anchors = [t for t, on in ((death_tick, until_death), (rnd.end_tick, until_round_end)) if on]
+    seg = _segment(kills, rnd, clutch[0] if won_clutch else None, opts, max(anchors, default=None))
     return Highlight(
         id=f"r{rnd.number}",
         round=rnd.number,
@@ -167,13 +177,21 @@ def score_round(deaths: list[Death], rnd: Round, steamid: str, opts: Options) ->
         tags=specials,
         clutch=won_clutch,
         segments=[seg],
+        death_tick=death_tick,
+        until_death=until_death,
+        until_round_end=until_round_end,
     )
 
 
-def detect_highlights(match: MatchData, steamid: str, opts: Options | None = None) -> list[Highlight]:
-    """Every round where the player got a kill, in round order. The best ones have selected=True."""
+def detect_highlights(match: MatchData, steamid: str, opts: Options | None = None,
+                      until_death: set[str] | frozenset = frozenset(),
+                      until_round_end: set[str] | frozenset = frozenset()) -> list[Highlight]:
+    """Every round where the player got a kill, in round order. The best ones have selected=True.
+    until_death / until_round_end are highlight ids ("r3") whose clips should run on longer."""
     opts = opts or Options()
-    candidates = [h for r in match.rounds if (h := score_round(match.deaths, r, steamid, opts))]
+    candidates = [h for r in match.rounds
+                  if (h := score_round(match.deaths, r, steamid, opts,
+                                       f"r{r.number}" in until_death, f"r{r.number}" in until_round_end))]
     qualifying = [h for h in candidates if h.score >= opts.min_score or h.tags]
     for h in sorted(qualifying, key=lambda h: -h.score)[: opts.max_clips]:
         h.selected = True

@@ -135,3 +135,58 @@ def test_mvp_music_stops_at_the_next_round():
     rnd = make_round(end=2000 + S)  # next round starts 10 s after round end
     h = score_round([kill(2000, "e1")], rnd, ME, Options(mvp_s=20))
     assert h.segments[0].end_tick == rnd.limit_tick - 1
+
+
+def test_until_death_records_until_the_player_dies():
+    rnd = make_round()  # round ends long after, so no MVP music
+    deaths = [kill(2000, "e1"), kill(2000 + 30 * S, ME, attacker="e2")]
+    h = score_round(deaths, rnd, ME, Options(), until_death=True)
+    assert h.until_death and h.death_tick == 2000 + 30 * S
+    assert h.segments[0].end_tick == 2000 + 30 * S + 2 * S
+    # off: stops after the last kill as before
+    h = score_round(deaths, rnd, ME, Options())
+    assert not h.until_death
+    assert h.segments[0].end_tick == 2000 + 2 * S
+
+
+def test_until_death_ignored_when_the_player_survived():
+    rnd = make_round()
+    h = score_round([kill(2000, "e1")], rnd, ME, Options(), until_death=True)
+    assert h.death_tick is None and not h.until_death
+    assert h.segments[0].end_tick == 2000 + 2 * S
+
+
+def test_until_death_keeps_kills_made_after_dying():
+    rnd = make_round()
+    deaths = [kill(2000, ME, attacker="e2"), kill(2000 + 3 * S, "e1", weapon="hegrenade")]
+    h = score_round(deaths, rnd, ME, Options(), until_death=True)
+    assert h.segments[0].end_tick == 2000 + 3 * S + 2 * S
+
+
+def test_until_round_end_records_to_the_round_end_and_mvp():
+    rnd = make_round(end=2000 + 60 * S)
+    h = score_round([kill(2000, "e1")], rnd, ME, Options(mvp_s=6), until_round_end=True)
+    assert h.until_round_end
+    assert h.segments[0].end_tick == rnd.end_tick + 6 * S
+    h = score_round([kill(2000, "e1")], rnd, ME, Options(mvp_s=0), until_round_end=True)
+    assert h.segments[0].end_tick == rnd.end_tick + 2 * S
+
+
+def test_both_options_use_whichever_is_later():
+    rnd = make_round(end=2000 + 60 * S)
+    died_after_round = [kill(2000, "e1"), kill(rnd.end_tick + 3 * S, ME, attacker="e2")]  # killed while saving
+    h = score_round(died_after_round, rnd, ME, Options(mvp_s=0), until_death=True, until_round_end=True)
+    assert h.segments[0].end_tick == rnd.end_tick + 3 * S + 2 * S
+    died_first = [kill(2000, "e1"), kill(2000 + 10 * S, ME, attacker="e2")]
+    h = score_round(died_first, rnd, ME, Options(mvp_s=0), until_death=True, until_round_end=True)
+    assert h.segments[0].end_tick == rnd.end_tick + 2 * S
+
+
+def test_detect_highlights_applies_options_per_round():
+    rounds = [make_round(number=i, start=i * 10000, end=i * 10000 + 5000) for i in (1, 2)]
+    deaths = [kill(10500, "e1", round=1), kill(20500, "e1", round=2)]
+    match = MatchData("de_test", [Player(ME, "me", T)], rounds, deaths)
+    hs = detect_highlights(match, ME, Options(mvp_s=0), until_round_end={"r2"})
+    assert [h.until_round_end for h in hs] == [False, True]
+    assert hs[0].segments[0].end_tick == 10500 + 2 * S
+    assert hs[1].segments[0].end_tick == 25000 + 2 * S

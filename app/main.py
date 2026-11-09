@@ -76,7 +76,12 @@ def _highlight_dict(h: Highlight) -> dict:
         "clutch": h.clutch, "kills": len(h.kills), "headshots": sum(k.headshot for k in h.kills),
         "duration_s": round(h.duration_s, 1), "selected": h.selected,
         "segments": [[s.start_tick, s.end_tick] for s in h.segments],
+        "died": h.death_tick is not None, "until_death": h.until_death, "until_round_end": h.until_round_end,
     }
+
+
+def _ids(csv: str) -> set[str]:
+    return {s for s in (p.strip() for p in csv.split(",")) if s}
 
 
 # ---- API -----------------------------------------------------------------------------------
@@ -131,11 +136,12 @@ async def get_demo(demo_id: str):
 
 @app.get("/api/demos/{demo_id}/highlights")
 async def get_highlights(demo_id: str, steamid: str, max_clips: int = 8, pre_s: float = 4, post_s: float = 2,
-                         mvp_s: float = 10):
+                         mvp_s: float = 10, until_death: str = "", until_round_end: str = ""):
     m = await _match(demo_id)
     if not m.player(steamid):
         raise HTTPException(404, "Player not in this demo")
-    hs = detect_highlights(m, steamid, Options(max_clips=max_clips, pre_s=pre_s, post_s=post_s, mvp_s=mvp_s))
+    hs = detect_highlights(m, steamid, Options(max_clips=max_clips, pre_s=pre_s, post_s=post_s, mvp_s=mvp_s),
+                           until_death=_ids(until_death), until_round_end=_ids(until_round_end))
     return [_highlight_dict(h) for h in hs]
 
 
@@ -146,6 +152,8 @@ class JobIn(BaseModel):
     pre_s: float = 4
     post_s: float = 2
     mvp_s: float = 10
+    until_death: list[str] = []  # highlight ids recorded until the player's death
+    until_round_end: list[str] = []  # highlight ids recorded until the round ends
     width: int = 1280
     height: int = 720
     framerate: int = 60
@@ -158,7 +166,9 @@ async def create_job(body: JobIn):
     if not player:
         raise HTTPException(404, "Player not in this demo")
     wanted = set(body.highlight_ids)
-    hs = [h for h in detect_highlights(m, body.steamid, Options(pre_s=body.pre_s, post_s=body.post_s, mvp_s=body.mvp_s))
+    opts = Options(pre_s=body.pre_s, post_s=body.post_s, mvp_s=body.mvp_s)
+    hs = [h for h in detect_highlights(m, body.steamid, opts, until_death=set(body.until_death),
+                                       until_round_end=set(body.until_round_end))
           if h.id in wanted]
     if not hs:
         raise HTTPException(400, "Pick at least one highlight")

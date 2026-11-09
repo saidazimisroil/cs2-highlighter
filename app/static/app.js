@@ -40,6 +40,7 @@ async function openDemo(promise) {
     const demo = await promise;
     state.demo = demo;
     state.steamid = null;
+    state.highlightsFor = null; // don't carry picks or per-round options over to another demo
     busyDemo(`${demo.name} — ${demo.map}, ${demo.rounds} rounds`);
     if (demo.warning) {
       $("#demo-warning").textContent = "⚠ " + demo.warning;
@@ -97,13 +98,19 @@ $("#teams").onclick = (e) => {
 };
 
 // ---- highlights -----------------------------------------------------------------------------
-async function loadHighlights() {
+// ids of the highlights with a per-round option on ("until_death" / "until_round_end")
+const idsWith = (flag) => state.highlights.filter((h) => h[flag]).map((h) => h.id);
+
+async function loadHighlights({ quiet = false } = {}) {
   show("#step-highlights");
-  $("#highlights").innerHTML = `<li class="muted">Finding highlights…</li>`;
-  const q = new URLSearchParams({ steamid: state.steamid, pre_s: $("#pre").value, post_s: $("#post").value,
-                                   mvp_s: $("#mvp").value });
-  const keep = new Set(state.highlights.filter((h) => h.selected).map((h) => h.id));
+  if (!quiet) $("#highlights").innerHTML = `<li class="muted">Finding highlights…</li>`;
   const prevPlayer = state.highlightsFor;
+  const samePlayer = prevPlayer === state.steamid;
+  const q = new URLSearchParams({ steamid: state.steamid, pre_s: $("#pre").value, post_s: $("#post").value,
+                                   mvp_s: $("#mvp").value,
+                                   until_death: samePlayer ? idsWith("until_death").join(",") : "",
+                                   until_round_end: samePlayer ? idsWith("until_round_end").join(",") : "" });
+  const keep = new Set(state.highlights.filter((h) => h.selected).map((h) => h.id));
   state.highlights = await api(`/api/demos/${state.demo.id}/highlights?${q}`);
   if (prevPlayer === state.steamid) state.highlights.forEach((h) => (h.selected = keep.has(h.id)));
   state.highlightsFor = state.steamid;
@@ -124,7 +131,13 @@ function renderHighlights() {
     .map((h) => `<li class="hl ${h.selected ? "on" : ""}">
         <input type="checkbox" data-id="${h.id}" ${h.selected ? "checked" : ""}>
         <div><div class="label">${esc(h.label)}</div>
-          <div class="meta">${h.kills} kill${h.kills > 1 ? "s" : ""} · ${h.headshots} HS · ${h.segments.length} segment${h.segments.length > 1 ? "s" : ""}</div></div>
+          <div class="meta">${h.kills} kill${h.kills > 1 ? "s" : ""} · ${h.headshots} HS · ${h.segments.length} segment${h.segments.length > 1 ? "s" : ""}</div>
+          <div class="opts">
+            <label title="${h.died ? "Keep recording until the player dies this round" : "Survived this round"}" class="${h.died ? "" : "off"}">
+              <input type="checkbox" data-id="${h.id}" data-opt="until_death" ${h.until_death ? "checked" : ""} ${h.died ? "" : "disabled"}> until death</label>
+            <label title="Keep recording until the round ends">
+              <input type="checkbox" data-id="${h.id}" data-opt="until_round_end" ${h.until_round_end ? "checked" : ""}> until round end</label>
+          </div></div>
         <div class="score" title="score ${h.score}"><i style="width:${Math.round((h.score / max) * 100)}%"></i></div>
         <span class="dur">${h.duration_s.toFixed(0)}s</span>
       </li>`)
@@ -135,6 +148,12 @@ function renderHighlights() {
 $("#highlights").onchange = (e) => {
   const h = state.highlights.find((x) => x.id === e.target.dataset.id);
   if (!h) return;
+  const opt = e.target.dataset.opt;
+  if (opt) {
+    h[opt] = e.target.checked;
+    loadHighlights({ quiet: true }); // the server works out the new clip length
+    return;
+  }
   h.selected = e.target.checked;
   e.target.closest(".hl").classList.toggle("on", h.selected);
   updateSummary();
@@ -159,6 +178,8 @@ $("#render").onclick = async () => {
     pre_s: +$("#pre").value,
     post_s: +$("#post").value,
     mvp_s: +$("#mvp").value,
+    until_death: idsWith("until_death"),
+    until_round_end: idsWith("until_round_end"),
     width, height, framerate,
   };
   $("#render").disabled = true;
