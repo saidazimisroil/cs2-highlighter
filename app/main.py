@@ -201,9 +201,20 @@ def get_video(job_id: str):
     return FileResponse(job.output, media_type="video/mp4", filename=Path(job.output).name)
 
 
+# Without Cache-Control, browsers keep using an old app.js after an update and new UI doesn't show.
+NO_CACHE = {"Cache-Control": "no-cache"}  # still served from cache, but revalidated (ETag) every time
+
+
+class FreshStaticFiles(StaticFiles):
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers.update(NO_CACHE)
+        return response
+
+
 @app.get("/")
 def index():
-    return FileResponse(STATIC / "index.html")
+    return FileResponse(STATIC / "index.html", headers=NO_CACHE)
 
 
-app.mount("/static", StaticFiles(directory=STATIC), name="static")
+app.mount("/static", FreshStaticFiles(directory=STATIC), name="static")
