@@ -78,9 +78,13 @@ Set `CS2HL_RENDER_MODE` before `run.bat` to pick how CS2 is driven:
 - **"Loader could not create requested process" / Access denied**: anti-cheat is blocking HLAE.
   For FACEIT, choose *Disable driver* from its tray icon and reboot (turn it back on before
   playing FACEIT).
+- **CS2 crashes a few seconds after loading a FACEIT demo**: FACEIT demos start paused, and CS2
+  (since the Oct 22, 2026 update) crashes when it then skips back to the demo's start. The
+  default `hlae` mode avoids this by unpausing the demo as it loads; the `config` / `per-clip`
+  modes don't, so use `hlae` for these demos.
 - **The app warns about a demo's version**: CS2 itself crashes loading that demo, even without
-  this app. Keep the demo and try after the next CS2 update. Known pairs are in `CRASHING_DEMOS`
-  in `app/render.py`; the warning stops by itself once CS2 updates.
+  this app. Keep the demo and try after the next CS2 update. Known pairs go in `CRASHING_DEMOS`
+  in `app/render.py` (none are listed right now); the warning stops by itself once CS2 updates.
 - **CS2 crashes on one demo**: try another. If that one works, CS2 can't play the first demo.
 - **CS2 crashes on every demo**: usually a CS2 update broke HLAE (or CS Demo Manager's plugin in
   the `config` / `per-clip` modes). Update HLAE and try again.
