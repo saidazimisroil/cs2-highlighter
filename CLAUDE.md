@@ -37,7 +37,8 @@ live only in memory, so restart the server to pick up code changes. A restart dr
   selected round becomes one uncut `Segment` (pre-roll before the first kill → post-roll after
   the last kill, or on to death / round end + MVP music, depending on the per-round options).
   Ticks are 64/s (`config.TICKRATE`). `detect_highlights(mode=…)` picks the recording mode
-  (`MODES`): `best` (scored rounds), `knife` (one clip per round with knife kills) and `awp_miss`
+  (`MODES`): `best` (scored rounds), `knife` (one clip per round with knife kills), `deaths` (each
+  death as two segments: the player's view, then the killer's via `Segment.pov`) and `awp_miss`
   (the player's AWP shots that hit nobody, from `MatchData.shots`; a hit is a `player_hurt` on the
   shot's tick, within `parser.HIT_WINDOW`).
 - **render.py**: picks the recording mode from `CS2HL_RENDER_MODE`. The default is `hlae`
@@ -64,7 +65,8 @@ live only in memory, so restart the server to pick up code changes. A restart dr
   dropped.
 - **Forward-only jumps**: the demo only ever jumps forward with `demo_gototick`. A jump is
   skipped when the next segment is within about 1 s. Seeking backwards replays from the start
-  and is very slow.
+  and is very slow. Segments that overlap (a `deaths`-mode death replayed from the killer's view,
+  `Segment.pov`) are split by `plan_passes` into separate CS2 runs, each forward-only.
 - **Quoted arguments go in a cfg**: `mirv_cmd` can't hold nested quotes, so commands with quoted
   arguments (player name, output paths) go in `prepN.cfg`, which is exec'd at the right tick.
 - **`demo_ui_mode 0` before `playdemo`**: otherwise the playback bar ends up in the recording.

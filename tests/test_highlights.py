@@ -253,3 +253,52 @@ def test_unknown_mode_rejected():
     import pytest
     with pytest.raises(ValueError):
         detect_highlights(two_rounds(), ME, mode="nope")
+
+
+# ---- deaths mode --------------------------------------------------------------------------------
+
+def deaths_of(deaths):
+    return detect_highlights(two_rounds(deaths), ME, Options(), mode="deaths")
+
+
+def test_death_is_recorded_from_my_view_then_the_killers():
+    h, = deaths_of([kill(10500, "e1", round=1), kill(11000, ME, attacker="e2", round=1, weapon="awp", headshot=True)])
+    assert h.id == "d11000" and h.selected and h.death_tick == 11000
+    assert h.label == "ROUND 1 · KILLED BY e2 (AWP · HS)"
+    mine, theirs = h.segments
+    assert (mine.start_tick, mine.end_tick) == (11000 - 4 * S, 11000 + 2 * S)
+    assert (theirs.start_tick, theirs.end_tick) == (mine.start_tick, mine.end_tick)
+    assert (mine.pov, theirs.pov, theirs.pov_name) == ("", "e2", "e2")
+
+
+def test_death_label_lists_special_flags_and_silencer_names():
+    h, = deaths_of([kill(11000, ME, attacker="e2", weapon="m4a1_silencer", wallbang=True)])
+    assert h.label == "ROUND 1 · KILLED BY e2 (M4A1-S) · WALLBANG"
+
+
+def test_deaths_without_a_killer_have_only_my_view():
+    hs = deaths_of([kill(11000, ME, attacker="", weapon="planted_c4"),
+                    kill(21000, ME, attacker="", round=2, weapon="world")])
+    assert [h.label for h in hs] == ["ROUND 1 · BOMB", "ROUND 2 · FALL"]
+    assert all(len(h.segments) == 1 for h in hs)
+    h, = deaths_of([kill(11000, ME, attacker=ME, weapon="hegrenade")])
+    assert h.label == "ROUND 1 · SUICIDE" and len(h.segments) == 1
+
+
+def test_teamkill_label():
+    h, = deaths_of([kill(11000, ME, attacker="m1", weapon="ak47")])
+    assert h.label == "ROUND 1 · TEAMKILLED BY m1 (AK47)" and h.segments[1].pov == "m1"
+
+
+def test_no_killer_view_when_the_killer_was_already_dead():
+    h, = deaths_of([kill(10900, "e2", attacker="m1"), kill(11000, ME, attacker="e2", weapon="molotov")])
+    assert len(h.segments) == 1
+
+
+def test_other_players_deaths_and_mvp_are_ignored():
+    match = two_rounds([kill(10500, "e1"), kill(11000, "m1", attacker="e1")])
+    assert detect_highlights(match, ME, Options(), mode="deaths") == []
+    rnd_end = make_round(end=11000 + 2 * S)
+    m = MatchData("de_test", [Player(ME, "me", T)], [rnd_end], [kill(11000, ME, attacker="e1")])
+    h, = detect_highlights(m, ME, Options(mvp_s=10), mode="deaths")
+    assert h.segments[0].end_tick == 11000 + 2 * S  # no MVP music after a death

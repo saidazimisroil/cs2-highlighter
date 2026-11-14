@@ -2,7 +2,7 @@
 import json
 import os
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
@@ -19,6 +19,7 @@ LABEL_IN, LABEL_OUT = 0.3, 3.3
 class ClipSpec:
     label: str
     segments: list[Path]
+    captions: list[str] = field(default_factory=list)  # per segment, shown on top the whole time; "" = none
 
 
 class CompileError(RuntimeError):
@@ -99,7 +100,8 @@ def make_clip(clip: ClipSpec, out: Path, work: Path, name: str, w: int, h: int, 
     """Joins a highlight's segments (hard cuts) and adds its lower-third label."""
     args, chains, pairs = [], [], []
     idx = 0
-    for seg in clip.segments:
+    font = _ff_path(find_font())
+    for k, seg in enumerate(clip.segments):
         duration, has_audio = probe(seg)
         args += ["-i", str(seg)]
         v_in, a_in = f"{idx}:v", f"{idx}:a"
@@ -109,11 +111,16 @@ def make_clip(clip: ClipSpec, out: Path, work: Path, name: str, w: int, h: int, 
             a_in = f"{idx}:a"
             idx += 1
         n = len(pairs)
-        chains.append(f"[{v_in}]{_norm_v(w, h, fps)}[v{n}]")
+        caption = clip.captions[k] if k < len(clip.captions) else ""
+        draw = ""
+        if caption:
+            draw = (f",drawtext=fontfile={font}:textfile={_text(work, f'{name}-cap{k}', caption)}:expansion=none:"
+                    f"fontcolor=white:fontsize={h // 30}:x=(w-tw)/2:y={h // 14}:box=1:boxcolor=black@0.55:"
+                    f"boxborderw={h // 80}")
+        chains.append(f"[{v_in}]{_norm_v(w, h, fps)}{draw}[v{n}]")
         chains.append(f"[{a_in}]{NORM_A}[a{n}]")
         pairs.append(f"[v{n}][a{n}]")
 
-    font = _ff_path(find_font())
     size = h // 24
     pad = h // 50
     y = f"h-{h // 6}"

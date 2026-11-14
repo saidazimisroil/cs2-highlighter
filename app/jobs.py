@@ -98,7 +98,9 @@ class JobManager:
         by_highlight: dict[str, list[Path]] = {}
         for seg in sorted(segments, key=lambda r: r.index):
             by_highlight.setdefault(seg.highlight_id, []).append(seg.path)
-        clips = [ClipSpec(h.label, by_highlight[h.id]) for h in job.highlights if h.id in by_highlight]
+        clips = [ClipSpec(h.label, by_highlight[h.id],
+                          [f"KILLER'S VIEW · {s.pov_name}" if s.pov else "" for s in h.segments])
+                 for h in job.highlights if h.id in by_highlight]
         won, lost = job.match.score_for(job.steamid)
         suffix = "" if job.mode == "best" else f"_{job.mode}"
         out = OUTPUT_DIR / f"{job.match.map_name}_{_safe(job.player_name)}{suffix}_{job.id}.mp4"

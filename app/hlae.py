@@ -26,6 +26,8 @@ START_TIMEOUT = 180       # seconds for CS2 to appear after HLAE starts
 RUN_TIMEOUT = 3 * 3600
 IDLE_TIMEOUT = 45         # seconds CS2 may stay open after the last segment's video stops growing
 WAV_HEADER = 44           # bytes in a WAV file with no samples
+MAX_OVERLAP = 2 * TICKRATE  # a segment starting this much before the previous one ends still shares its pass
+PASS_PAUSE = 5            # seconds between one pass's CS2 closing and the next one starting
 
 
 def _slash(p: Path) -> str:
@@ -42,9 +44,26 @@ def killfeed_filters(steamid: str, show_all: bool) -> list[str]:
             f"mirv_deathmsg filter add victimMatch=x{steamid} victimIsLocal=1"]
 
 
-def build_cfgs(demo_path, steamid: str, player_name: str, segments: list[tuple[int, int]],
+def plan_passes(segs: list[tuple]) -> list[list[tuple]]:
+    """Splits segments (tuples starting with start_tick, end_tick) into passes that each play the demo
+    forward only. Seeking back is very slow, so a segment that replays a moment already recorded (e.g.
+    a death seen again from the killer's view) goes into another pass, i.e. another CS2 run. A small
+    overlap (MAX_OVERLAP) stays in the pass; build_cfgs starts that segment a little late instead."""
+    passes: list[list[tuple]] = []
+    for seg in sorted(segs):
+        start = seg[0]
+        fit = next((p for p in passes if start > p[-1][0] and start >= p[-1][1] - MAX_OVERLAP), None)
+        if fit is None:
+            passes.append([seg])
+        else:
+            fit.append(seg)
+    return passes
+
+
+def build_cfgs(demo_path, steamid: str, player_name: str, segments: list[tuple],
                out_dir: Path, settings: RenderSettings) -> dict[str, str]:
-    """cfg file name -> contents. Segments are (start_tick, end_tick), sorted, non-overlapping."""
+    """cfg file name -> contents. Segments are (start_tick, end_tick) or (start_tick, end_tick, pov_name),
+    sorted and not overlapping (see plan_passes). pov_name is whose view to record; "" = player_name."""
     name = player_name.replace('"', "")
     setup = [
         "sv_cheats 1",
@@ -69,7 +88,8 @@ def build_cfgs(demo_path, steamid: str, player_name: str, segments: list[tuple[i
     files = {"setup.cfg": setup}
     schedule = [(RESUME_TICK, "demo_resume"), (MIN_TICK, f"exec {CFG_DIR}/setup")]
     pos = MIN_TICK
-    for n, (start, end) in enumerate(segments, 1):
+    for n, (start, end, *rest) in enumerate(segments, 1):
+        pov = (rest[0] if rest else "").replace('"', "") or name
         target = start - SEEK_LEAD
         if target > pos + TICKRATE:  # only jump forward, and only when it saves time
             schedule.append((pos + 1, f"demo_gototick {target}"))
@@ -81,7 +101,7 @@ def build_cfgs(demo_path, steamid: str, player_name: str, segments: list[tuple[i
         files[f"prep{n}.cfg"] = [
             "demo_ui_mode 0",  # keep the playback bar out of the recording
             "spec_mode 1",  # first person; must come before spec_player
-            f'spec_player "{name}"',
+            f'spec_player "{pov}"',
             "mirv_deathmsg clear",
             f'mirv_streams record name "{seg_dir}"',
             f'mirv_streams settings add ffmpeg cs2hl{n} "-c:v libx264 -pix_fmt yuv420p -crf {settings.crf} '
@@ -161,13 +181,33 @@ def render_hlae(demo_path, steamid, player_name, highlights, out_dir: Path,
     hlae, cs2 = Path(hlae), Path(cs2)
     _ensure_ffmpeg_ini(hlae)
 
-    segs = sorted(((s.start_tick, s.end_tick, h.id, i) for h in highlights for i, s in enumerate(h.segments)))
-    out_dir.mkdir(parents=True, exist_ok=True)
+    segs = [(s.start_tick, s.end_tick, s.pov_name, h.id, i) for h in highlights for i, s in enumerate(h.segments)]
+    passes = plan_passes(segs)
     cfg_dir = cs2.parents[2] / "csgo" / "cfg" / CFG_DIR
+    out = []
+    for n, pass_segs in enumerate(passes, 1):
+        if len(passes) > 1:
+            if n > 1:
+                time.sleep(PASS_PAUSE)  # let the previous CS2 finish shutting down
+            log(f"Pass {n}/{len(passes)}: " + ("each moment once." if n == 1 else
+                                              "replaying moments from another player's view."))
+        out += _record_pass(hlae, cs2, cfg_dir, demo_path, steamid, player_name, pass_segs,
+                            out_dir / f"pass{n}", settings, log)
+    for f in cfg_dir.glob("*.cfg"):
+        f.unlink()
+    return out
+
+
+def _record_pass(hlae: Path, cs2: Path, cfg_dir: Path, demo_path, steamid, player_name, segs: list[tuple],
+                 out_dir: Path, settings: RenderSettings, log: Log) -> list[RenderedSegment]:
+    """One CS2 run that records segs (start, end, pov_name, highlight id, segment index) in order."""
+    if _running("cs2.exe"):
+        raise RenderError("CS2 is already running. Close it and try again.")
+    out_dir.mkdir(parents=True, exist_ok=True)
     cfg_dir.mkdir(parents=True, exist_ok=True)
     for old in cfg_dir.glob("*.cfg"):
         old.unlink()
-    for fname, text in build_cfgs(demo_path, steamid, player_name, [(s, e) for s, e, _, _ in segs],
+    for fname, text in build_cfgs(demo_path, steamid, player_name, [(s, e, pov) for s, e, pov, _, _ in segs],
                                   out_dir, settings).items():
         (cfg_dir / fname).write_text(text, encoding="utf-8")
 
@@ -216,7 +256,7 @@ def render_hlae(demo_path, steamid, player_name, highlights, out_dir: Path,
     log("CS2 closed.")
 
     out = []
-    for n, (_, _, hid, i) in enumerate(segs, 1):
+    for n, (_, _, _, hid, i) in enumerate(segs, 1):
         video = out_dir / str(n) / "video.mp4"
         if not video.is_file() or video.stat().st_size == 0:
             crashed = set(cs2.parent.glob("*.mdmp")) - dumps_before
@@ -226,6 +266,4 @@ def render_hlae(demo_path, steamid, player_name, highlights, out_dir: Path,
                                   "crashes, a CS2 update may have broken HLAE, so update HLAE.")
             raise RenderError(f"Segment {n} wasn't recorded ({video} is missing). CS2 may have closed early.")
         out.append(RenderedSegment(hid, i, _mux(video, _best_take(out_dir / str(n)), out_dir / f"{n}.mp4", log)))
-    for f in cfg_dir.glob("*.cfg"):
-        f.unlink()
     return out

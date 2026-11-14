@@ -90,6 +90,7 @@ def build_config(demo_path: str, steamid: str, player_name: str, highlights: lis
     sequences, order = [], []
     for h in highlights:
         for i, seg in enumerate(h.segments):
+            pov, pov_name = seg.pov or steamid, seg.pov_name or player_name  # whose view to record
             sequences.append({
                 "number": len(sequences) + 1,
                 "startTick": seg.start_tick,
@@ -103,7 +104,7 @@ def build_config(demo_path: str, steamid: str, player_name: str, highlights: lis
                     "highlightKill": True,
                     "isVoiceEnabled": True,
                 }],
-                "playerCameras": [{"tick": seg.start_tick, "playerSteamId": steamid, "playerName": player_name}],
+                "playerCameras": [{"tick": seg.start_tick, "playerSteamId": pov, "playerName": pov_name}],
                 "cameras": [],
                 "showXRay": False,
                 "showAssists": True,
@@ -183,7 +184,7 @@ def render_per_clip(demo_path, steamid, player_name, highlights, out_dir: Path,
             folder.mkdir(parents=True, exist_ok=True)
             log(f"Recording segment {n}/{total} ({h.label})…")
             cmd = [_csdm(), "video", str(demo_path), str(seg.start_tick), str(seg.end_tick),
-                   "--output", str(folder), "--focus-player", steamid,
+                   "--output", str(folder), "--focus-player", seg.pov or steamid,
                    "--recording-system", "HLAE", "--recording-output", "video",
                    "--encoder-software", "FFmpeg",
                    "--width", str(settings.width), "--height", str(settings.height),

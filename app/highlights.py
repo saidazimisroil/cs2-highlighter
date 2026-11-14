@@ -22,7 +22,8 @@ MVP_MAX_GAP_S = 15  # keep the round-end music only if the round ended this soon
 MISS_GROUP_S = 5  # missed shots this close together (same round) share one clip
 
 # Recording modes: "best" scores every round with a kill; the others collect one kind of moment.
-MODES = {"best": "HIGHLIGHTS", "knife": "KNIFE KILLS", "awp_miss": "AWP MISSES"}  # mode -> title card text
+MODES = {"best": "HIGHLIGHTS", "knife": "KNIFE KILLS", "awp_miss": "AWP MISSES",  # mode -> title card text
+         "deaths": "DEATHS"}
 
 SPECIAL_TAGS = [  # (flag, label) in display order
     ("wallbang", "WALLBANG"), ("noscope", "NOSCOPE"), ("smoke", "THROUGH SMOKE"),
@@ -35,6 +36,8 @@ IGNORED_WEAPONS = {"world", "planted_c4", "trigger_hurt", ""}
 class Segment:
     start_tick: int
     end_tick: int
+    pov: str = ""  # steamid of the player the camera follows; "" = the selected player
+    pov_name: str = ""
 
 
 @dataclass
@@ -252,12 +255,47 @@ def detect_awp_misses(match: MatchData, steamid: str, opts: Options, until_death
     return out
 
 
+def _death_label(d: Death, rnd: Round, steamid: str) -> str:
+    killer = d.attacker and d.attacker != steamid
+    if not killer:
+        cause = {"planted_c4": "BOMB", "world": "FALL", "trigger_hurt": "WORLD"}.get(d.weapon, "SUICIDE")
+        return f"ROUND {rnd.number} · {cause}"
+    teamkill = rnd.roster.get(steamid) is not None and rnd.roster.get(d.attacker) == rnd.roster.get(steamid)
+    how = [d.weapon.upper().replace("_SILENCER", "-S")] + (["HS"] if d.headshot else [])
+    extra = [tag for flag, tag in SPECIAL_TAGS if getattr(d, flag)]
+    who = "TEAMKILLED BY" if teamkill else "KILLED BY"
+    return " · ".join([f"ROUND {rnd.number}", f"{who} {d.attacker_name} ({' · '.join(how)})", *extra])
+
+
+def detect_deaths(match: MatchData, steamid: str, opts: Options) -> list[Highlight]:
+    """One clip per death of the player: their own view, then the same moment from the killer's view
+    (when another player, still alive, killed them). The two views overlap in time, so they're
+    recorded in separate passes (see hlae.plan_passes)."""
+    rounds = {r.number: r for r in match.rounds}
+    no_mvp = Options(pre_s=opts.pre_s, post_s=opts.post_s, mvp_s=0)
+    out = []
+    for d in match.deaths:
+        rnd = rounds.get(d.round)
+        if d.victim != steamid or rnd is None or d.tick >= rnd.limit_tick:
+            continue
+        own = _segment([d.tick], rnd, None, no_mvp)
+        segments = [own]
+        killer_dead = any(x.victim == d.attacker and x.tick < d.tick for x in match.deaths if x.round == d.round)
+        if d.attacker and d.attacker != steamid and not killer_dead:
+            segments.append(Segment(own.start_tick, own.end_tick, d.attacker, d.attacker_name))
+        out.append(Highlight(
+            id=f"d{d.tick}", round=rnd.number, kills=[], score=1.0, label=_death_label(d, rnd, steamid),
+            tags=["DEATH"], clutch=None, segments=segments, selected=True, death_tick=d.tick,
+        ))
+    return out
+
+
 def detect_highlights(match: MatchData, steamid: str, opts: Options | None = None,
                       until_death: set[str] | frozenset = frozenset(),
                       until_round_end: set[str] | frozenset = frozenset(), mode: str = "best") -> list[Highlight]:
     """Clips for the given mode, in match order. mode "best": every round where the player got a kill;
-    the best ones have selected=True. "knife" / "awp_miss": every knife-kill round / missed AWP shot,
-    all selected. until_death / until_round_end are highlight ids ("r3") whose clips should run on longer."""
+    the best ones have selected=True. "knife" / "awp_miss" / "deaths": every knife-kill round / missed
+    AWP shot / death, all selected. until_death / until_round_end are highlight ids ("r3") whose clips should run on longer."""
     opts = opts or Options()
     if mode not in MODES:
         raise ValueError(f"Unknown mode {mode!r}")
@@ -265,6 +303,8 @@ def detect_highlights(match: MatchData, steamid: str, opts: Options | None = Non
         return detect_knife(match, steamid, opts, until_death, until_round_end)
     if mode == "awp_miss":
         return detect_awp_misses(match, steamid, opts, until_death, until_round_end)
+    if mode == "deaths":
+        return detect_deaths(match, steamid, opts)
     candidates = [h for r in match.rounds
                   if (h := score_round(match.deaths, r, steamid, opts,
                                        f"r{r.number}" in until_death, f"r{r.number}" in until_round_end))]
@@ -301,7 +341,8 @@ def _main():
     print(f"Player: {player.name}  Score from their side: {won}-{lost}\n")
     for h in detect_highlights(match, player.steamid, Options(max_clips=args.max_clips), mode=args.mode):
         mark = "*" if h.selected else " "
-        segs = ", ".join(f"{s.start_tick}-{s.end_tick}" for s in h.segments)
+        segs = ", ".join(f"{s.start_tick}-{s.end_tick}" + (f" ({s.pov_name}'s view)" if s.pov else "")
+                         for s in h.segments)
         print(f" {mark} {h.score:5.1f}  {h.duration_s:5.1f}s  {h.label:<45} ticks {segs}")
     print("\n* = picked for the video")
 

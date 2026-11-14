@@ -2,7 +2,7 @@ import re
 from pathlib import Path
 
 from app.config import TICKRATE as S
-from app.hlae import MIN_TICK, PREP_LEAD, RESUME_TICK, SEEK_LEAD, _best_take, build_cfgs
+from app.hlae import MAX_OVERLAP, MIN_TICK, PREP_LEAD, RESUME_TICK, SEEK_LEAD, _best_take, build_cfgs, plan_passes
 from app.render import RenderSettings
 
 STEAMID = "76561199396077107"
@@ -99,3 +99,22 @@ def test_empty_takes_left_at_demo_end_are_ignored(tmp_path):
     assert _best_take(tmp_path) == tmp_path / "take0000" / "audio.wav"
     (tmp_path / "take0000" / "audio.wav").write_bytes(b"\0" * 44)
     assert _best_take(tmp_path) is None  # no audio at all: keep the video only
+
+
+def test_replayed_moments_are_recorded_in_a_second_pass():
+    segs = [(5000, 5400, "", "d5256", 0), (5000, 5400, "killer", "d5256", 1),
+            (9000, 9400, "", "d9256", 0), (9000, 9400, "other", "d9256", 1)]
+    passes = plan_passes(segs)
+    assert [[s[2] for s in p] for p in passes] == [["", ""], ["killer", "other"]]
+
+
+def test_separate_and_slightly_overlapping_segments_share_one_pass():
+    segs = [(5000, 6000), (6000 - MAX_OVERLAP, 7000), (20000, 21000)]
+    assert plan_passes(segs) == [segs]
+    assert len(plan_passes([(5000, 8000), (6000, 9000)])) == 2  # big overlap: another pass
+
+
+def test_segment_records_from_its_own_point_of_view():
+    cfgs = build([(5000, 6000, ""), (9000, 9500, 'Kil"ler')])
+    assert 'spec_player "DIAS_GEEK"' in cfgs["prep1.cfg"]
+    assert 'spec_player "Killer"' in cfgs["prep2.cfg"]

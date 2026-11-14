@@ -33,8 +33,10 @@ opens http://127.0.0.1:8765.
 1. Paste the path of a `.dem` (or drop one in to upload a copy). CS2 match demos are usually in
    `...\Counter-Strike Global Offensive\game\csgo\`.
 2. Pick the player.
-3. Pick a **Mode**: *Best rounds* (best are pre-picked), *Knife kills* or *AWP misses* (AWP
-   shots that hit nobody; misses a few seconds apart share a clip). Untick/tick clips, choose
+3. Pick a **Mode**: *Best rounds* (best are pre-picked), *Knife kills*, *AWP misses* (AWP
+   shots that hit nobody; misses a few seconds apart share a clip) or *Deaths* (each death from
+   the player's view, then replayed from the killer's; CS2 starts twice for this one, since the
+   demo can only play forward in one run). Untick/tick clips, choose
    quality and whether the kill feed shows every kill or only the player's, then **Render video**.
 4. Wait — the log shows progress. The finished MP4 plays in the page and is saved in
    `data\output\`.

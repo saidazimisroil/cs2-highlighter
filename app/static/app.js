@@ -122,10 +122,14 @@ const EMPTY_TEXT = {
   best: "This player has no kills in the match.",
   knife: "This player has no knife kills in the match.",
   awp_miss: "This player has no missed AWP shots in the match.",
+  deaths: "This player didn't die in the match.",
 };
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : word.endsWith("s") ? "es" : "s"}`;
-const metaText = (h) => (h.misses ? plural(h.misses, "miss") : `${plural(h.kills, "kill")} · ${h.headshots} HS`) +
-  ` · ${plural(h.segments.length, "segment")}`;
+const metaText = (h) => {
+  if ($("#mode").value === "deaths") return h.segments.length > 1 ? "player's view, then killer's view" : "player's view only";
+  return (h.misses ? plural(h.misses, "miss") : `${plural(h.kills, "kill")} · ${h.headshots} HS`) +
+    ` · ${plural(h.segments.length, "segment")}`;
+};
 
 function renderHighlights() {
   const hs = state.highlights;
@@ -142,7 +146,7 @@ function renderHighlights() {
         <input type="checkbox" data-id="${h.id}" ${h.selected ? "checked" : ""}>
         <div><div class="label">${esc(h.label)}</div>
           <div class="meta">${metaText(h)}</div>
-          <div class="opts">
+          <div class="opts ${$("#mode").value === "deaths" ? "hidden" : ""}">
             <label title="${h.died ? "Keep recording until the player dies this round" : "Survived this round"}" class="${h.died ? "" : "off"}">
               <input type="checkbox" data-id="${h.id}" data-opt="until_death" ${h.until_death ? "checked" : ""} ${h.died ? "" : "disabled"}> until death</label>
             <label title="Keep recording until the round ends">
