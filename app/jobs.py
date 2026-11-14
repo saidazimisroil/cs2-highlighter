@@ -1,4 +1,5 @@
 """A single background worker that records and compiles one video at a time (CS2 runs once)."""
+import json
 import queue
 import re
 import threading
@@ -10,7 +11,7 @@ from pathlib import Path
 
 from .compile import ClipSpec, compile_video
 from .config import OUTPUT_DIR, RENDERS_DIR
-from .highlights import MODES, Highlight
+from .highlights import Highlight, title_for
 from .parser import MatchData
 from .render import RenderSettings, render
 
@@ -27,6 +28,7 @@ class Job:
     highlights: list[Highlight]
     settings: RenderSettings
     mode: str = "best"  # highlights.MODES
+    weapons: list[str] = field(default_factory=list)  # misses mode: the guns picked (empty = all)
     status: str = "queued"  # queued | recording | compiling | done | error
     log: list[str] = field(default_factory=list)
     output: str | None = None
@@ -105,5 +107,11 @@ class JobManager:
         suffix = "" if job.mode == "best" else f"_{job.mode}"
         out = OUTPUT_DIR / f"{job.match.map_name}_{_safe(job.player_name)}{suffix}_{job.id}.mp4"
         compile_video(job.player_name, f"{job.match.map_name} · {won}–{lost}", clips, out,
-                      work / "compile", s.width, s.height, s.framerate, s.crf, job.add_log, kind=MODES[job.mode])
+                      work / "compile", s.width, s.height, s.framerate, s.crf, job.add_log,
+                      kind=title_for(job.mode, job.weapons))
         job.output = str(out)
+        # what the Videos page shows for this file, also after a restart (when this Job is gone)
+        out.with_suffix(".json").write_text(json.dumps({
+            "player": job.player_name, "map": job.match.map_name, "mode": job.mode,
+            "title": title_for(job.mode, job.weapons), "clips": [h.label for h in job.highlights],
+        }), encoding="utf-8")

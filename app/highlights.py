@@ -20,10 +20,33 @@ CLUTCH_LEAD_S = 1
 CLUTCH_MAX_EXTRA_S = 8
 MVP_MAX_GAP_S = 15  # keep the round-end music only if the round ended this soon after the last kill
 MISS_GROUP_S = 5  # missed shots this close together (same round) share one clip
+BURST_GAP_S = 0.4  # shots from one gun this close together are one burst (a spray, a double tap)
 
 # Recording modes: "best" scores every round with a kill; the others collect one kind of moment.
-MODES = {"best": "HIGHLIGHTS", "knife": "KNIFE KILLS", "awp_miss": "AWP MISSES",  # mode -> title card text
+MODES = {"best": "HIGHLIGHTS", "knife": "KNIFE KILLS", "misses": "MISSED SHOTS",  # mode -> title card text
          "deaths": "DEATHS"}
+
+WEAPON_NAMES = {  # weapon_fire name without "weapon_" -> display name; others are upper-cased
+    "ak47": "AK-47", "m4a1": "M4A4", "m4a1_silencer": "M4A1-S", "awp": "AWP", "ssg08": "SSG 08",
+    "deagle": "DESERT EAGLE", "usp_silencer": "USP-S", "hkp2000": "P2000", "glock": "GLOCK",
+    "galilar": "GALIL AR", "famas": "FAMAS", "sg556": "SG 553", "aug": "AUG", "scar20": "SCAR-20",
+    "g3sg1": "G3SG1", "mac10": "MAC-10", "mp9": "MP9", "mp7": "MP7", "mp5sd": "MP5-SD", "ump45": "UMP-45",
+    "p90": "P90", "bizon": "PP-BIZON", "p250": "P250", "fiveseven": "FIVE-SEVEN", "tec9": "TEC-9",
+    "cz75a": "CZ75-AUTO", "elite": "DUAL BERETTAS", "revolver": "R8 REVOLVER", "nova": "NOVA",
+    "xm1014": "XM1014", "mag7": "MAG-7", "sawedoff": "SAWED-OFF", "m249": "M249", "negev": "NEGEV",
+}
+
+
+def weapon_name(weapon: str) -> str:
+    w = weapon.removeprefix("weapon_")
+    return WEAPON_NAMES.get(w, w.upper().replace("_", " "))
+
+
+def title_for(mode: str, weapons=()) -> str:
+    """Title card text: the mode's, or e.g. "AWP MISSES" when missed shots of one gun are recorded."""
+    if mode == "misses" and len(weapons) == 1:
+        return f"{weapon_name(next(iter(weapons)))} MISSES"
+    return MODES[mode]
 
 SPECIAL_TAGS = [  # (flag, label) in display order
     ("wallbang", "WALLBANG"), ("noscope", "NOSCOPE"), ("smoke", "THROUGH SMOKE"),
@@ -54,7 +77,7 @@ class Highlight:
     death_tick: int | None = None  # when the player died this round; None if they survived
     until_death: bool = False  # clip runs on until the player's death
     until_round_end: bool = False  # clip runs on until the round ends
-    misses: int = 0  # missed shots in the clip (awp_miss mode)
+    misses: int = 0  # missed bursts in the clip (misses mode)
 
     @property
     def duration_s(self) -> float:
@@ -223,32 +246,61 @@ def detect_knife(match: MatchData, steamid: str, opts: Options, until_death=froz
     return out
 
 
-def detect_awp_misses(match: MatchData, steamid: str, opts: Options, until_death=frozenset(),
-                      until_round_end=frozenset()) -> list[Highlight]:
-    """The player's AWP shots that hit nobody. Misses in the same round less than MISS_GROUP_S apart
-    share one clip."""
-    groups: list[list[Shot]] = []
+def _bursts(match: MatchData, steamid: str) -> list[list[Shot]]:
+    """The player's shots, split into bursts: shots from one gun less than BURST_GAP_S apart."""
+    bursts: list[list[Shot]] = []
     for s in match.shots:
-        if s.shooter != steamid or s.hit or s.weapon != "weapon_awp":
+        if s.shooter != steamid:
             continue
-        last = groups[-1][-1] if groups else None
-        if last and last.round == s.round and s.tick - last.tick <= MISS_GROUP_S * TICKRATE:
-            groups[-1].append(s)
+        last = bursts[-1][-1] if bursts else None
+        if last and last.weapon == s.weapon and s.tick - last.tick <= BURST_GAP_S * TICKRATE:
+            bursts[-1].append(s)
         else:
-            groups.append([s])
+            bursts.append([s])
+    return bursts
+
+
+def miss_weapons(match: MatchData, steamid: str) -> list[dict]:
+    """The player's guns, most used first: {weapon, name, bursts, misses} for the weapon picker."""
+    counts: dict[str, list[int]] = {}
+    for b in _bursts(match, steamid):
+        c = counts.setdefault(b[0].weapon, [0, 0])
+        c[0] += 1
+        c[1] += not any(s.hit for s in b)
+    return [{"weapon": w, "name": weapon_name(w), "bursts": n, "misses": m}
+            for w, (n, m) in sorted(counts.items(), key=lambda x: -x[1][0])]
+
+
+def detect_misses(match: MatchData, steamid: str, opts: Options, until_death=frozenset(),
+                  until_round_end=frozenset(), weapons=frozenset()) -> list[Highlight]:
+    """The player's missed shots with the given guns (all guns if none given). A burst (a spray, a
+    double tap) is one miss when none of its shots hit; one hit makes the whole burst a hit. Missed
+    bursts in the same round less than MISS_GROUP_S apart share one clip."""
+    groups: list[list[list[Shot]]] = []
+    for b in _bursts(match, steamid):
+        if (weapons and b[0].weapon not in weapons) or any(s.hit for s in b):
+            continue
+        last = groups[-1][-1][-1] if groups else None
+        if last and last.round == b[0].round and b[0].tick - last.tick <= MISS_GROUP_S * TICKRATE:
+            groups[-1].append(b)
+        else:
+            groups.append([b])
     rounds = {r.number: r for r in match.rounds}
     out = []
     for g in groups:
-        rnd = rounds.get(g[0].round)
-        if rnd is None or g[0].tick >= rnd.limit_tick:
+        rnd = rounds.get(g[0][0].round)
+        if rnd is None or g[0][0].tick >= rnd.limit_tick:
             continue
-        hid = f"m{g[0].tick}"
+        hid = f"m{g[0][0].tick}"
+        guns = {b[0].weapon for b in g}
+        what = f"{weapon_name(next(iter(guns)))} MISS" if len(guns) == 1 else "MISS"
         round_deaths = [d for d in match.deaths if d.round == rnd.number]
         death_tick, ud, anchor = _run_on(round_deaths, rnd, steamid, hid in until_death, hid in until_round_end)
         out.append(Highlight(
             id=hid, round=rnd.number, kills=[], score=float(len(g)),
-            label=f"ROUND {rnd.number} · {_count(len(g), 'AWP MISS', 'AWP MISSES')}",
-            tags=["MISS"], clutch=None, segments=[_segment([s.tick for s in g], rnd, None, opts, anchor)],
+            label=f"ROUND {rnd.number} · {_count(len(g), what, what + 'ES')}",
+            tags=["MISS"], clutch=None,
+            segments=[_segment([s.tick for b in g for s in b], rnd, None, opts, anchor)],
             selected=True, death_tick=death_tick, until_death=ud, until_round_end=hid in until_round_end,
             misses=len(g),
         ))
@@ -292,17 +344,19 @@ def detect_deaths(match: MatchData, steamid: str, opts: Options) -> list[Highlig
 
 def detect_highlights(match: MatchData, steamid: str, opts: Options | None = None,
                       until_death: set[str] | frozenset = frozenset(),
-                      until_round_end: set[str] | frozenset = frozenset(), mode: str = "best") -> list[Highlight]:
+                      until_round_end: set[str] | frozenset = frozenset(), mode: str = "best",
+                      weapons: set[str] | frozenset = frozenset()) -> list[Highlight]:
     """Clips for the given mode, in match order. mode "best": every round where the player got a kill;
-    the best ones have selected=True. "knife" / "awp_miss" / "deaths": every knife-kill round / missed
-    AWP shot / death, all selected. until_death / until_round_end are highlight ids ("r3") whose clips should run on longer."""
+    the best ones have selected=True. "knife" / "misses" / "deaths": every knife-kill round / missed
+    shot (with the given guns, or all) / death, all selected. until_death / until_round_end are highlight
+    ids ("r3") whose clips should run on longer."""
     opts = opts or Options()
     if mode not in MODES:
         raise ValueError(f"Unknown mode {mode!r}")
     if mode == "knife":
         return detect_knife(match, steamid, opts, until_death, until_round_end)
-    if mode == "awp_miss":
-        return detect_awp_misses(match, steamid, opts, until_death, until_round_end)
+    if mode == "misses":
+        return detect_misses(match, steamid, opts, until_death, until_round_end, weapons)
     if mode == "deaths":
         return detect_deaths(match, steamid, opts)
     candidates = [h for r in match.rounds

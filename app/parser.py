@@ -8,7 +8,7 @@ from demoparser2 import DemoParser
 
 T, CT = 2, 3
 END_MARGIN = 64  # ticks (1 s) kept free at the end of the demo
-SHOT_WEAPONS = {"weapon_awp": "awp"}  # weapon_fire name -> player_hurt name, for the shots kept
+NOT_GUNS = ("knife", "bayonet", "grenade", "flashbang", "molotov", "decoy", "c4", "taser")  # weapon_fire names
 HIT_WINDOW = 2  # ticks after a shot in which its player_hurt may land
 _WINNER = {"T": T, "TERRORIST": T, "2": T, "CT": CT, "3": CT}
 
@@ -63,7 +63,7 @@ class MatchData:
     rounds: list[Round]
     deaths: list[Death]
     demo_version: int | None = None  # CS2 version the demo was recorded on, e.g. 14193
-    shots: list[Shot] = field(default_factory=list)  # AWP shots (SHOT_WEAPONS)
+    shots: list[Shot] = field(default_factory=list)  # gun shots (is_gun), in tick order
 
     def player(self, steamid: str) -> Player | None:
         return next((p for p in self.players if p.steamid == steamid), None)
@@ -133,9 +133,14 @@ def _last_tick(parser: DemoParser) -> int:
     return int(ticks.max()) if len(ticks) else 0
 
 
+def is_gun(weapon: str) -> bool:
+    return weapon.startswith("weapon_") and not any(w in weapon for w in NOT_GUNS)
+
+
 def _parse_shots(parser: DemoParser, starts: list[int]) -> list[Shot]:
-    """AWP shots in the real match, each marked hit or miss. A hit's player_hurt lands on the shot's
-    tick; HIT_WINDOW allows for a tick or two of slack."""
+    """Gun shots in the real match, each marked hit or miss. A hit's player_hurt lands on the shot's
+    tick; HIT_WINDOW allows for a tick or two of slack. Any damage by the shooter counts, because
+    player_hurt names some guns differently from weapon_fire (e.g. hkp2000 vs usp_silencer)."""
     try:
         fire = parser.parse_event("weapon_fire")
         hurt = parser.parse_event("player_hurt")
@@ -143,10 +148,9 @@ def _parse_shots(parser: DemoParser, starts: list[int]) -> list[Shot]:
         return []
     if not len(fire):
         return []
-    hits = {(_sid(r.attacker_steamid), int(r.tick)) for r in hurt.itertuples()
-            if _str(getattr(r, "weapon", "")) in SHOT_WEAPONS.values()} if len(hurt) else set()
+    hits = {(_sid(r.attacker_steamid), int(r.tick)) for r in hurt.itertuples()} if len(hurt) else set()
     shots = []
-    for r in fire[fire["weapon"].isin(list(SHOT_WEAPONS))].itertuples():
+    for r in fire[fire["weapon"].map(lambda w: is_gun(_str(w)))].itertuples():
         tick, shooter = int(r.tick), _sid(r.user_steamid)
         idx = bisect_right(starts, tick) - 1
         if idx < 0 or not shooter:
@@ -155,6 +159,34 @@ def _parse_shots(parser: DemoParser, starts: list[int]) -> list[Shot]:
         shots.append(Shot(tick, idx + 1, shooter, r.weapon, hit))
     shots.sort(key=lambda s: s.tick)
     return shots
+
+
+SOURCES = (("faceit", "FACEIT"), ("xplay", "xPlay"), ("valve", "Valve MM"))  # server_name part -> label
+
+
+def source_of(server_name: str | None) -> str:
+    s = (server_name or "").lower()
+    return next((label for key, label in SOURCES if key in s), "Other")
+
+
+def demo_summary(path: str | Path) -> dict:
+    """What the demo list shows, in about a second (parse_demo takes several):
+    {map, score: [T rounds, CT rounds] at the end or None, source, patch}."""
+    parser = DemoParser(str(path))
+    header = parser.parse_header()
+    score = None
+    try:
+        df = parser.parse_ticks(["team_rounds_total", "team_num"])
+        last = df[df["tick"] == df["tick"].max()]
+        teams = {int(r.team_num): int(r.team_rounds_total) for r in last.itertuples()
+                 if pd.notna(r.team_num) and pd.notna(r.team_rounds_total) and int(r.team_num) in (T, CT)}
+        if len(teams) == 2:
+            score = [teams[T], teams[CT]]
+    except Exception:
+        pass
+    version = str(header.get("patch_version", ""))
+    return {"map": header.get("map_name", "unknown"), "score": score,
+            "source": source_of(header.get("server_name")), "patch": int(version) if version.isdigit() else None}
 
 
 def parse_demo(path: str | Path) -> MatchData:

@@ -38,9 +38,12 @@ live only in memory, so restart the server to pick up code changes. A restart dr
   the last kill, or on to death / round end + MVP music, depending on the per-round options).
   Ticks are 64/s (`config.TICKRATE`). `detect_highlights(mode=…)` picks the recording mode
   (`MODES`): `best` (scored rounds), `knife` (one clip per round with knife kills), `deaths` (each
-  death as two segments: the player's view, then the killer's via `Segment.pov`) and `awp_miss`
-  (the player's AWP shots that hit nobody, from `MatchData.shots`; a hit is a `player_hurt` on the
-  shot's tick, within `parser.HIT_WINDOW`).
+  death as two segments: the player's view, then the killer's via `Segment.pov`) and `misses`
+  (missed shots with the picked guns, from `MatchData.shots`, which holds every gun shot). A hit
+  is any `player_hurt` by the shooter within `parser.HIT_WINDOW` ticks. Shots from one gun less
+  than `BURST_GAP_S` apart form a burst, and a burst is one miss only if none of its shots hit, so
+  a whiffed spray counts once. `miss_weapons` feeds the gun picker, and `title_for` names the title
+  card ("AWP MISSES" when one gun is picked).
 - **render.py**: picks the recording mode from `CS2HL_RENDER_MODE`. The default is `hlae`
   (in `hlae.py`). `config` and `per-clip` are older fallbacks that call CS Demo Manager's
   `csdm video`. Note that csdm exits 0 even when CS2 crashed, so its output is also checked for
@@ -49,9 +52,18 @@ live only in memory, so restart the server to pick up code changes. A restart dr
   crossfades everything into `data/output/<map>_<player>_<job>.mp4`.
 - **jobs.py**: one worker thread with a queue, because only one CS2 instance can run at a time.
   Exceptions become `job.error`, and the traceback goes into the job log shown in the UI.
-- **main.py**: FastAPI plus the static frontend (`app/static`, plain JS). Demos registered by
-  path or upload are stored in `data/demos/index.json` and keyed by a random id. Everything
-  under `data/` is gitignored runtime state.
+- **main.py**: FastAPI plus the static frontend. Demos registered by path or upload are stored in
+  `data/demos/index.json` and keyed by a random id.
+  - A background thread caches each demo's `parser.demo_summary` there (map, final score, source;
+    about 1 s per demo, versus several seconds for `parse_demo`).
+  - `DELETE /api/demos/{id}` deletes the file only for uploaded copies, which live in `DEMOS_DIR`.
+  - `/api/videos` lists `data/output/*.mp4` from disk, so finished videos outlive the in-memory
+    job list. Jobs write a `.json` sidecar with player/map/mode, and older files are described
+    from their names.
+  - Everything under `data/` is gitignored runtime state.
+- **app/static**: plain JS, no build step. `app.js` has a hash router (`#/demos`,
+  `#/demo/<id>/<steamid>/<mode>`, `#/videos`) and one render function per view, with events
+  delegated on `#view`. Settings and recent demos are kept in `localStorage`.
 
 ## HLAE recording mode (`hlae.py`): the fragile part
 

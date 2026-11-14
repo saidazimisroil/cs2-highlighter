@@ -1,5 +1,6 @@
 from app.config import TICKRATE as S
-from app.highlights import MISS_GROUP_S, Options, detect_highlights, find_clutch, score_round
+from app.highlights import (BURST_GAP_S, MISS_GROUP_S, Options, detect_highlights, find_clutch, miss_weapons,
+                            score_round, title_for)
 from app.parser import CT, T, Death, MatchData, Player, Round, Shot
 
 ME = "me"
@@ -192,7 +193,7 @@ def test_detect_highlights_applies_options_per_round():
     assert hs[1].segments[0].end_tick == 25000 + 2 * S
 
 
-# ---- knife and AWP-miss modes -------------------------------------------------------------------
+# ---- knife and missed-shot modes -------------------------------------------------------------------
 
 def shot(tick, round=1, shooter=ME, hit=False, weapon="weapon_awp"):
     return Shot(tick, round, shooter, weapon, hit)
@@ -225,15 +226,16 @@ def test_knife_mode_single_kill_label():
 
 
 def test_awp_misses_grouped_per_round_and_hits_ignored():
+    # AWP shots are each their own burst, so this behaves as when the mode was AWP-only
     gap = MISS_GROUP_S * S
     match = two_rounds(shots=[
-        shot(10500), shot(10500 + gap), shot(10500 + gap + 10, hit=True),  # 2 misses, then a hit
+        shot(10500), shot(10500 + gap), shot(10500 + gap + 2 * S, hit=True),  # 2 misses, then a hit after the re-bolt
         shot(10500 + 3 * gap),  # too long after: own clip
         shot(10600, shooter="e1"),  # someone else's miss
         shot(14990), shot(20100, round=2),  # close in time, but different rounds
-        shot(20200, weapon="weapon_ssg08"),
+        shot(20200, weapon="weapon_ssg08"),  # another gun: left out by the weapons filter
     ])
-    hs = detect_highlights(match, ME, Options(mvp_s=0), mode="awp_miss")
+    hs = detect_highlights(match, ME, Options(mvp_s=0), mode="misses", weapons={"weapon_awp"})
     assert [(h.id, h.misses) for h in hs] == [
         ("m10500", 2), (f"m{10500 + 3 * gap}", 1), ("m14990", 1), ("m20100", 1)]
     assert hs[0].label == "ROUND 1 · 2 AWP MISSES" and hs[2].label == "ROUND 1 · AWP MISS"
@@ -241,12 +243,50 @@ def test_awp_misses_grouped_per_round_and_hits_ignored():
     assert (hs[0].segments[0].start_tick, hs[0].segments[0].end_tick) == (10500 - 4 * S, 10500 + gap + 2 * S)
 
 
-def test_awp_miss_until_death():
+def test_miss_until_death():
     match = two_rounds([kill(12000, ME, attacker="e1")], [shot(10500)])
-    h = detect_highlights(match, ME, Options(mvp_s=0), until_death={"m10500"}, mode="awp_miss")[0]
+    h = detect_highlights(match, ME, Options(mvp_s=0), until_death={"m10500"}, mode="misses")[0]
     assert h.until_death and h.segments[0].end_tick == 12000 + 2 * S
-    h = detect_highlights(match, ME, Options(mvp_s=0), mode="awp_miss")[0]
+    h = detect_highlights(match, ME, Options(mvp_s=0), mode="misses")[0]
     assert not h.until_death and h.segments[0].end_tick == 10500 + 2 * S
+
+
+def test_spray_with_a_hit_is_not_a_miss():
+    burst = int(BURST_GAP_S * S)
+    match = two_rounds(shots=[
+        *(shot(10500 + i * 6, weapon="weapon_ak47") for i in range(8)),  # a whiffed spray: one miss
+        *(shot(12000 + i * 6, weapon="weapon_ak47", hit=i == 5) for i in range(8)),  # one bullet hit
+        shot(13000, weapon="weapon_deagle"), shot(13000 + burst + 1, weapon="weapon_deagle"),  # 2 taps
+    ])
+    hs = detect_highlights(match, ME, Options(mvp_s=0), mode="misses")
+    assert [(h.id, h.misses, h.label) for h in hs] == [
+        ("m10500", 1, "ROUND 1 · AK-47 MISS"), ("m13000", 2, "ROUND 1 · 2 DESERT EAGLE MISSES")]
+    assert hs[0].segments[0].end_tick == 10500 + 7 * 6 + 2 * S  # the clip covers the whole spray
+
+
+def test_misses_of_different_guns_share_a_clip():
+    match = two_rounds(shots=[shot(10500), shot(10600, weapon="weapon_usp_silencer")])
+    h, = detect_highlights(match, ME, Options(mvp_s=0), mode="misses")
+    assert h.label == "ROUND 1 · 2 MISSES" and h.misses == 2
+
+
+def test_miss_weapons_counts_bursts_most_used_first():
+    match = two_rounds(shots=[
+        shot(10500, weapon="weapon_ak47"), shot(10506, weapon="weapon_ak47", hit=True),  # 1 burst, hit
+        shot(11500, weapon="weapon_ak47"),  # 1 burst, missed
+        shot(12000, hit=True), shot(20500, shooter="e1"),
+    ])
+    assert miss_weapons(match, ME) == [
+        {"weapon": "weapon_ak47", "name": "AK-47", "bursts": 2, "misses": 1},
+        {"weapon": "weapon_awp", "name": "AWP", "bursts": 1, "misses": 0},
+    ]
+
+
+def test_title_names_the_gun_when_only_one_is_picked():
+    assert title_for("misses", {"weapon_awp"}) == "AWP MISSES"
+    assert title_for("misses", set()) == "MISSED SHOTS"
+    assert title_for("misses", {"weapon_awp", "weapon_ssg08"}) == "MISSED SHOTS"
+    assert title_for("knife") == "KNIFE KILLS"
 
 
 def test_unknown_mode_rejected():

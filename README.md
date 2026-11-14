@@ -30,16 +30,20 @@ Needs Windows with CS2 installed (Steam), plus:
 Double-click **`run.bat`**. The first run creates `.venv` and installs the Python packages, then
 opens http://127.0.0.1:8765.
 
-1. Paste the path of a `.dem` (or drop one in to upload a copy). CS2 match demos are usually in
-   `...\Counter-Strike Global Offensive\game\csgo\`.
-2. Pick the player.
-3. Pick a **Mode**: *Best rounds* (best are pre-picked), *Knife kills*, *AWP misses* (AWP
-   shots that hit nobody; misses a few seconds apart share a clip) or *Deaths* (each death from
-   the player's view, then replayed from the killer's; CS2 starts twice for this one, since the
-   demo can only play forward in one run). Untick/tick clips, choose
-   quality and whether the kill feed shows every kill or only the player's, then **Render video**.
-4. Wait — the log shows progress. The finished MP4 plays in the page and is saved in
-   `data\output\`.
+1. **Demos** (sidebar): paste the path of a `.dem`, or drop one on the page to upload a copy. CS2
+   match demos are usually in `...\Counter-Strike Global Offensive\game\csgo\`. Each demo shows
+   its map, final score, source (FACEIT / xPlay / Valve MM), date and size; the bin icon removes it
+   from the list (an uploaded copy is deleted, a demo added by path keeps its file).
+2. Open a demo and pick the player (rows show their kills–deaths).
+3. Pick a tab: *Best rounds* (best are pre-picked), *Knife kills*, *Missed shots* or *Deaths* (each
+   death from the player's view, then replayed from the killer's; CS2 starts twice for this one,
+   since the demo can only play forward in one run).
+   - *Missed shots*: pick the guns in the chip row (snipers are pre-picked when the player used
+     one). A burst — a spray, a double tap — counts as one miss when none of its bullets hit, and
+     misses a few seconds apart share a clip.
+4. Untick/tick clips, set the options in **Settings** (kept between visits), then **Render video**.
+5. **Videos** (sidebar) shows the render's progress and log, and every finished video in
+   `data\output\`, with a player and a download link.
 
 Recording speed: HLAE records frame by frame, so the video is smooth even on integrated
 graphics, it just takes longer than real time. 720p is the default for that reason.
