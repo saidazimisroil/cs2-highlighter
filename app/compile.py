@@ -151,7 +151,8 @@ def join(parts: list[Path], out: Path, crf: int, log: Log) -> None:
         chains.append(f"[{a_prev}][{i}:a]acrossfade=d={FADE_S}[xa{i}]")
         v_prev, a_prev = f"xv{i}", f"xa{i}"
     total = sum(durations) - FADE_S * (len(parts) - 1)
-    chains.append(f"[{v_prev}]fade=t=out:st={max(0, total - 0.8):.3f}:d=0.8[vout]")
+    # xfade/fade can hand libx264 yuv444p, which browsers (and most phones) can't play; force 4:2:0.
+    chains.append(f"[{v_prev}]fade=t=out:st={max(0, total - 0.8):.3f}:d=0.8,format=yuv420p[vout]")
     chains.append(f"[{a_prev}]afade=t=out:st={max(0, total - 0.8):.3f}:d=0.8[aout]")
     _run([*args, "-filter_complex", ";".join(chains), "-map", "[vout]", "-map", "[aout]",
           "-c:v", "libx264", "-preset", "medium", "-crf", str(crf), "-c:a", "aac", "-b:a", "192k",
