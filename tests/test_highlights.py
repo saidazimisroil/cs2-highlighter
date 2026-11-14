@@ -1,6 +1,6 @@
 from app.config import TICKRATE as S
-from app.highlights import Options, detect_highlights, find_clutch, score_round
-from app.parser import CT, T, Death, MatchData, Player, Round
+from app.highlights import MISS_GROUP_S, Options, detect_highlights, find_clutch, score_round
+from app.parser import CT, T, Death, MatchData, Player, Round, Shot
 
 ME = "me"
 MATES = ["m1", "m2", "m3", "m4"]
@@ -190,3 +190,66 @@ def test_detect_highlights_applies_options_per_round():
     assert [h.until_round_end for h in hs] == [False, True]
     assert hs[0].segments[0].end_tick == 10500 + 2 * S
     assert hs[1].segments[0].end_tick == 25000 + 2 * S
+
+
+# ---- knife and AWP-miss modes -------------------------------------------------------------------
+
+def shot(tick, round=1, shooter=ME, hit=False, weapon="weapon_awp"):
+    return Shot(tick, round, shooter, weapon, hit)
+
+
+def two_rounds(deaths=(), shots=()):
+    rounds = [make_round(number=i, start=i * 10000, end=i * 10000 + 5000) for i in (1, 2)]
+    return MatchData("de_test", [Player(ME, "me", T)], rounds, list(deaths), shots=list(shots))
+
+
+def test_knife_mode_keeps_only_knife_kills():
+    match = two_rounds([
+        kill(10500, "e1", round=1, weapon="ak47"),
+        kill(10600, "e2", round=1, weapon="knife_t"),
+        kill(10700, "e3", round=1, weapon="taser"),
+        kill(10800, "e4", round=1, weapon="bayonet"),
+        kill(20500, "e1", round=2, weapon="ak47"),  # no knife kill: no clip
+    ])
+    hs = detect_highlights(match, ME, Options(mvp_s=0), mode="knife")
+    assert [h.id for h in hs] == ["r1"]
+    h = hs[0]
+    assert [k.victim for k in h.kills] == ["e2", "e4"]
+    assert h.label == "ROUND 1 · 2 KNIFE KILLS" and h.selected
+    assert (h.segments[0].start_tick, h.segments[0].end_tick) == (10600 - 4 * S, 10800 + 2 * S)
+
+
+def test_knife_mode_single_kill_label():
+    hs = detect_highlights(two_rounds([kill(10600, "e2", weapon="knife")]), ME, Options(), mode="knife")
+    assert hs[0].label == "ROUND 1 · KNIFE KILL"
+
+
+def test_awp_misses_grouped_per_round_and_hits_ignored():
+    gap = MISS_GROUP_S * S
+    match = two_rounds(shots=[
+        shot(10500), shot(10500 + gap), shot(10500 + gap + 10, hit=True),  # 2 misses, then a hit
+        shot(10500 + 3 * gap),  # too long after: own clip
+        shot(10600, shooter="e1"),  # someone else's miss
+        shot(14990), shot(20100, round=2),  # close in time, but different rounds
+        shot(20200, weapon="weapon_ssg08"),
+    ])
+    hs = detect_highlights(match, ME, Options(mvp_s=0), mode="awp_miss")
+    assert [(h.id, h.misses) for h in hs] == [
+        ("m10500", 2), (f"m{10500 + 3 * gap}", 1), ("m14990", 1), ("m20100", 1)]
+    assert hs[0].label == "ROUND 1 · 2 AWP MISSES" and hs[2].label == "ROUND 1 · AWP MISS"
+    assert all(h.selected and h.kills == [] for h in hs)
+    assert (hs[0].segments[0].start_tick, hs[0].segments[0].end_tick) == (10500 - 4 * S, 10500 + gap + 2 * S)
+
+
+def test_awp_miss_until_death():
+    match = two_rounds([kill(12000, ME, attacker="e1")], [shot(10500)])
+    h = detect_highlights(match, ME, Options(mvp_s=0), until_death={"m10500"}, mode="awp_miss")[0]
+    assert h.until_death and h.segments[0].end_tick == 12000 + 2 * S
+    h = detect_highlights(match, ME, Options(mvp_s=0), mode="awp_miss")[0]
+    assert not h.until_death and h.segments[0].end_tick == 10500 + 2 * S
+
+
+def test_unknown_mode_rejected():
+    import pytest
+    with pytest.raises(ValueError):
+        detect_highlights(two_rounds(), ME, mode="nope")

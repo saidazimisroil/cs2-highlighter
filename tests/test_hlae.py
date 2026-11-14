@@ -74,11 +74,21 @@ def test_player_voices_are_enabled_before_the_demo_loads():
     assert init.index("tv_listen_voice_indices_h -1") < init.index("playdemo")
 
 
-def test_kill_feed_shows_only_the_player():
+def test_kill_feed_shows_every_kill_by_default():
     setup = build([(5000, 6000)])["setup.cfg"]
-    assert "mirv_deathmsg filter add block=1" in setup
-    assert f"attackerMatch=x{STEAMID}" in setup
+    assert "block=1" not in setup
+    lines = setup.splitlines()
+    assert f"mirv_deathmsg filter add attackerMatch=x{STEAMID} attackerIsLocal=1" in lines
+    assert f"mirv_deathmsg filter add victimMatch=x{STEAMID} victimIsLocal=1" in lines
     assert "demo_ui_mode 0" in setup
+
+
+def test_kill_feed_can_show_only_the_player():
+    setup = build_cfgs(r"C:\demos\match.dem", STEAMID, "x", [(5000, 6000)], OUT,
+                       RenderSettings(killfeed_all=False))["setup.cfg"]
+    assert "mirv_deathmsg filter add block=1" in setup
+    assert f"attackerMatch=x{STEAMID} attackerIsLocal=1 block=0" in setup
+    assert "victimMatch" not in setup
 
 
 def test_empty_takes_left_at_demo_end_are_ignored(tmp_path):

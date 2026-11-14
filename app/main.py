@@ -15,7 +15,7 @@ from pydantic import BaseModel
 
 from .config import (DEMOS_DIR, find_cs2, find_cs2_version, find_csdm, find_ffmpeg, find_ffprobe, find_font,
                      find_hlae)
-from .highlights import Highlight, Options, detect_highlights
+from .highlights import MODES, Highlight, Options, detect_highlights
 from .jobs import JobManager
 from .parser import MatchData, parse_demo
 from .render import RenderSettings, demo_warning
@@ -77,7 +77,14 @@ def _highlight_dict(h: Highlight) -> dict:
         "duration_s": round(h.duration_s, 1), "selected": h.selected,
         "segments": [[s.start_tick, s.end_tick] for s in h.segments],
         "died": h.death_tick is not None, "until_death": h.until_death, "until_round_end": h.until_round_end,
+        "misses": h.misses,
     }
+
+
+def _mode(mode: str) -> str:
+    if mode not in MODES:
+        raise HTTPException(400, f"Unknown mode {mode!r}")
+    return mode
 
 
 def _ids(csv: str) -> set[str]:
@@ -136,12 +143,14 @@ async def get_demo(demo_id: str):
 
 @app.get("/api/demos/{demo_id}/highlights")
 async def get_highlights(demo_id: str, steamid: str, max_clips: int = 8, pre_s: float = 4, post_s: float = 2,
-                         mvp_s: float = 10, until_death: str = "", until_round_end: str = ""):
+                         mvp_s: float = 10, until_death: str = "", until_round_end: str = "",
+                         mode: str = "best"):
     m = await _match(demo_id)
     if not m.player(steamid):
         raise HTTPException(404, "Player not in this demo")
     hs = detect_highlights(m, steamid, Options(max_clips=max_clips, pre_s=pre_s, post_s=post_s, mvp_s=mvp_s),
-                           until_death=_ids(until_death), until_round_end=_ids(until_round_end))
+                           until_death=_ids(until_death), until_round_end=_ids(until_round_end),
+                           mode=_mode(mode))
     return [_highlight_dict(h) for h in hs]
 
 
@@ -154,6 +163,8 @@ class JobIn(BaseModel):
     mvp_s: float = 10
     until_death: list[str] = []  # highlight ids recorded until the player's death
     until_round_end: list[str] = []  # highlight ids recorded until the round ends
+    mode: str = "best"  # see highlights.MODES
+    killfeed_all: bool = True  # every kill in the kill feed, not only the player's
     width: int = 1280
     height: int = 720
     framerate: int = 60
@@ -168,14 +179,15 @@ async def create_job(body: JobIn):
     wanted = set(body.highlight_ids)
     opts = Options(pre_s=body.pre_s, post_s=body.post_s, mvp_s=body.mvp_s)
     hs = [h for h in detect_highlights(m, body.steamid, opts, until_death=set(body.until_death),
-                                       until_round_end=set(body.until_round_end))
+                                       until_round_end=set(body.until_round_end), mode=_mode(body.mode))
           if h.id in wanted]
     if not hs:
         raise HTTPException(400, "Pick at least one highlight")
     job = jobs.submit(
         demo_path=str(_demo_path(body.demo_id)), match=m, steamid=player.steamid,
-        player_name=player.name, highlights=hs,
-        settings=RenderSettings(width=body.width, height=body.height, framerate=body.framerate),
+        player_name=player.name, highlights=hs, mode=body.mode,
+        settings=RenderSettings(width=body.width, height=body.height, framerate=body.framerate,
+                                killfeed_all=body.killfeed_all),
     )
     return job.to_dict()
 

@@ -36,9 +36,22 @@
     <section class="card hidden" id="step-highlights">
       <h2><span class="n">3</span> Highlights</h2>
       <div class="toolbar">
-        <label>Before kill <input id="pre" type="number" min="1" max="10" step="0.5" value="4"> s</label>
-        <label>After kill <input id="post" type="number" min="0.5" max="10" step="0.5" value="2"> s</label>
+        <label>Mode
+          <select id="mode">
+            <option value="best" selected>Best rounds</option>
+            <option value="knife">Knife kills</option>
+            <option value="awp_miss">AWP misses</option>
+          </select>
+        </label>
+        <label title="Seconds recorded before the first kill or missed shot">Before <input id="pre" type="number" min="1" max="10" step="0.5" value="4"> s</label>
+        <label title="Seconds recorded after the last kill or missed shot">After <input id="post" type="number" min="0.5" max="10" step="0.5" value="2"> s</label>
         <label title="Keep recording after the round ends so the MVP music plays. 0 = off">MVP music <input id="mvp" type="number" min="0" max="20" step="1" value="10"> s</label>
+        <label title="Which kills appear in the kill feed (top right)">Kill feed
+          <select id="killfeed">
+            <option value="all" selected>All kills</option>
+            <option value="player">Only the player's</option>
+          </select>
+        </label>
         <label>Quality
           <select id="quality">
             <option value="1280x720x60" selected>720p · 60 fps (faster)</option>

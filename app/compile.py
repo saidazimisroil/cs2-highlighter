@@ -76,7 +76,8 @@ def _fade_alpha(t_in: float, t_out: float, f: float = 0.3) -> str:
             f"if(lt(t,{t_out - f}),1,if(lt(t,{t_out}),({t_out}-t)/{f},0))))'")
 
 
-def make_title(out: Path, work: Path, title: str, subtitle: str, w: int, h: int, fps: int, log: Log) -> None:
+def make_title(out: Path, work: Path, title: str, subtitle: str, w: int, h: int, fps: int, log: Log,
+               kind: str = "HIGHLIGHTS") -> None:
     font = _ff_path(find_font())
     big, mid, small = h // 9, h // 22, h // 34
     vf = ",".join([
@@ -85,7 +86,7 @@ def make_title(out: Path, work: Path, title: str, subtitle: str, w: int, h: int,
         f"drawbox=x=(iw-{w // 8})/2:y=ih/2+{h // 40}:w={w // 8}:h={max(3, h // 180)}:color={ACCENT}:t=fill",
         f"drawtext=fontfile={font}:textfile={_text(work, 'subtitle', subtitle)}:expansion=none:"
         f"fontcolor={ACCENT}:fontsize={mid}:x=(w-tw)/2:y=h/2+{h // 16}",
-        f"drawtext=fontfile={font}:text='HIGHLIGHTS':fontcolor=white@0.55:fontsize={small}:"
+        f"drawtext=fontfile={font}:textfile={_text(work, 'kind', kind)}:expansion=none:fontcolor=white@0.55:fontsize={small}:"
         f"x=(w-tw)/2:y=h/2+{h // 16 + mid + h // 40}",
         f"fade=t=in:d=0.5,fade=t=out:st={TITLE_S - 0.5}:d=0.5",
     ])
@@ -151,12 +152,12 @@ def join(parts: list[Path], out: Path, crf: int, log: Log) -> None:
 
 
 def compile_video(title: str, subtitle: str, clips: list[ClipSpec], out: Path, work: Path,
-                  w: int, h: int, fps: int, crf: int, log: Log) -> Path:
+                  w: int, h: int, fps: int, crf: int, log: Log, kind: str = "HIGHLIGHTS") -> Path:
     work.mkdir(parents=True, exist_ok=True)
     out.parent.mkdir(parents=True, exist_ok=True)
     parts = [work / "00-title.mp4"]
     log("Making title card…")
-    make_title(parts[0], work, title, subtitle, w, h, fps, log)
+    make_title(parts[0], work, title, subtitle, w, h, fps, log, kind)
     for i, clip in enumerate(clips, 1):
         log(f"Preparing clip {i}/{len(clips)}: {clip.label}")
         part = work / f"{i:02d}-clip.mp4"

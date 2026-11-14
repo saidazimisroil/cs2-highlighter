@@ -32,6 +32,16 @@ def _slash(p: Path) -> str:
     return str(p).replace("\\", "/")
 
 
+def killfeed_filters(steamid: str, show_all: bool) -> list[str]:
+    """mirv_deathmsg rules. The player's kills (and deaths) get the highlighted "local player" style;
+    show_all=False hides everyone else's kills."""
+    if not show_all:
+        return ["mirv_deathmsg filter add block=1",
+                f"mirv_deathmsg filter add attackerMatch=x{steamid} attackerIsLocal=1 block=0"]
+    return [f"mirv_deathmsg filter add attackerMatch=x{steamid} attackerIsLocal=1",
+            f"mirv_deathmsg filter add victimMatch=x{steamid} victimIsLocal=1"]
+
+
 def build_cfgs(demo_path, steamid: str, player_name: str, segments: list[tuple[int, int]],
                out_dir: Path, settings: RenderSettings) -> dict[str, str]:
     """cfg file name -> contents. Segments are (start_tick, end_tick), sorted, non-overlapping."""
@@ -51,8 +61,7 @@ def build_cfgs(demo_path, steamid: str, player_name: str, segments: list[tuple[i
         "spec_show_xray 0",
         "mirv_deathmsg lifetime 5",
         "mirv_deathmsg filter clear",
-        "mirv_deathmsg filter add block=1",
-        f"mirv_deathmsg filter add attackerMatch=x{steamid} attackerIsLocal=1 block=0",
+        *killfeed_filters(steamid, settings.killfeed_all),
         "mirv_streams record screen enabled 1",
         "mirv_streams record startMovieWav 1",
         f"mirv_streams record fps {settings.framerate}",

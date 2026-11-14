@@ -8,6 +8,8 @@ from demoparser2 import DemoParser
 
 T, CT = 2, 3
 END_MARGIN = 64  # ticks (1 s) kept free at the end of the demo
+SHOT_WEAPONS = {"weapon_awp": "awp"}  # weapon_fire name -> player_hurt name, for the shots kept
+HIT_WINDOW = 2  # ticks after a shot in which its player_hurt may land
 _WINNER = {"T": T, "TERRORIST": T, "2": T, "CT": CT, "3": CT}
 
 
@@ -36,6 +38,15 @@ class Death:
 
 
 @dataclass
+class Shot:
+    tick: int
+    round: int
+    shooter: str
+    weapon: str  # as in weapon_fire, e.g. "weapon_awp"
+    hit: bool  # damaged a player (player_hurt from the shooter on the same tick)
+
+
+@dataclass
 class Round:
     number: int
     start_tick: int  # freeze time ended
@@ -52,6 +63,7 @@ class MatchData:
     rounds: list[Round]
     deaths: list[Death]
     demo_version: int | None = None  # CS2 version the demo was recorded on, e.g. 14193
+    shots: list[Shot] = field(default_factory=list)  # AWP shots (SHOT_WEAPONS)
 
     def player(self, steamid: str) -> Player | None:
         return next((p for p in self.players if p.steamid == steamid), None)
@@ -106,6 +118,30 @@ def _last_tick(parser: DemoParser) -> int:
     except Exception:
         return 0
     return int(ticks.max()) if len(ticks) else 0
+
+
+def _parse_shots(parser: DemoParser, starts: list[int]) -> list[Shot]:
+    """AWP shots in the real match, each marked hit or miss. A hit's player_hurt lands on the shot's
+    tick; HIT_WINDOW allows for a tick or two of slack."""
+    try:
+        fire = parser.parse_event("weapon_fire")
+        hurt = parser.parse_event("player_hurt")
+    except Exception:
+        return []
+    if not len(fire):
+        return []
+    hits = {(_sid(r.attacker_steamid), int(r.tick)) for r in hurt.itertuples()
+            if _str(getattr(r, "weapon", "")) in SHOT_WEAPONS.values()} if len(hurt) else set()
+    shots = []
+    for r in fire[fire["weapon"].isin(list(SHOT_WEAPONS))].itertuples():
+        tick, shooter = int(r.tick), _sid(r.user_steamid)
+        idx = bisect_right(starts, tick) - 1
+        if idx < 0 or not shooter:
+            continue  # before the real match (warmup, knife round)
+        hit = any((shooter, t) in hits for t in range(tick, tick + HIT_WINDOW + 1))
+        shots.append(Shot(tick, idx + 1, shooter, r.weapon, hit))
+    shots.sort(key=lambda s: s.tick)
+    return shots
 
 
 def parse_demo(path: str | Path) -> MatchData:
@@ -180,4 +216,4 @@ def parse_demo(path: str | Path) -> MatchData:
 
     version = str(header.get("patch_version", ""))
     return MatchData(header.get("map_name", "unknown"), players, rounds, deaths,
-                     int(version) if version.isdigit() else None)
+                     int(version) if version.isdigit() else None, _parse_shots(parser, starts))

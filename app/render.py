@@ -47,6 +47,7 @@ class RenderSettings:
     height: int = 720
     framerate: int = 60
     crf: int = 18
+    killfeed_all: bool = True  # every kill in the kill feed (HLAE mode); False = only the player's
 
 
 @dataclass

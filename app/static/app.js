@@ -104,34 +104,44 @@ const idsWith = (flag) => state.highlights.filter((h) => h[flag]).map((h) => h.i
 async function loadHighlights({ quiet = false } = {}) {
   show("#step-highlights");
   if (!quiet) $("#highlights").innerHTML = `<li class="muted">Finding highlights…</li>`;
-  const prevPlayer = state.highlightsFor;
-  const samePlayer = prevPlayer === state.steamid;
-  const q = new URLSearchParams({ steamid: state.steamid, pre_s: $("#pre").value, post_s: $("#post").value,
-                                   mvp_s: $("#mvp").value,
+  // picks and per-clip options carry over only for the same player and mode
+  const key = `${state.steamid}|${$("#mode").value}`;
+  const samePlayer = state.highlightsFor === key;
+  const q = new URLSearchParams({ steamid: state.steamid, mode: $("#mode").value, pre_s: $("#pre").value,
+                                   post_s: $("#post").value, mvp_s: $("#mvp").value,
                                    until_death: samePlayer ? idsWith("until_death").join(",") : "",
                                    until_round_end: samePlayer ? idsWith("until_round_end").join(",") : "" });
   const keep = new Set(state.highlights.filter((h) => h.selected).map((h) => h.id));
   state.highlights = await api(`/api/demos/${state.demo.id}/highlights?${q}`);
-  if (prevPlayer === state.steamid) state.highlights.forEach((h) => (h.selected = keep.has(h.id)));
-  state.highlightsFor = state.steamid;
+  if (samePlayer) state.highlights.forEach((h) => (h.selected = keep.has(h.id)));
+  state.highlightsFor = key;
   renderHighlights();
 }
+
+const EMPTY_TEXT = {
+  best: "This player has no kills in the match.",
+  knife: "This player has no knife kills in the match.",
+  awp_miss: "This player has no missed AWP shots in the match.",
+};
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : word.endsWith("s") ? "es" : "s"}`;
+const metaText = (h) => (h.misses ? plural(h.misses, "miss") : `${plural(h.kills, "kill")} · ${h.headshots} HS`) +
+  ` · ${plural(h.segments.length, "segment")}`;
 
 function renderHighlights() {
   const hs = state.highlights;
   if (!hs.length) {
-    $("#highlights").innerHTML = `<li class="muted">This player has no kills in the match.</li>`;
+    $("#highlights").innerHTML = `<li class="muted">${EMPTY_TEXT[$("#mode").value]}</li>`;
     updateSummary();
     return;
   }
   const max = Math.max(...hs.map((h) => h.score));
-  // best first, so the picks are at the top
-  const sorted = [...hs].sort((a, b) => b.score - a.score);
+  // best rounds: best first, so the picks are at the top. Other modes: match order, as in the video.
+  const sorted = $("#mode").value === "best" ? [...hs].sort((a, b) => b.score - a.score) : hs;
   $("#highlights").innerHTML = sorted
     .map((h) => `<li class="hl ${h.selected ? "on" : ""}">
         <input type="checkbox" data-id="${h.id}" ${h.selected ? "checked" : ""}>
         <div><div class="label">${esc(h.label)}</div>
-          <div class="meta">${h.kills} kill${h.kills > 1 ? "s" : ""} · ${h.headshots} HS · ${h.segments.length} segment${h.segments.length > 1 ? "s" : ""}</div>
+          <div class="meta">${metaText(h)}</div>
           <div class="opts">
             <label title="${h.died ? "Keep recording until the player dies this round" : "Survived this round"}" class="${h.died ? "" : "off"}">
               <input type="checkbox" data-id="${h.id}" data-opt="until_death" ${h.until_death ? "checked" : ""} ${h.died ? "" : "disabled"}> until death</label>
@@ -158,7 +168,8 @@ $("#highlights").onchange = (e) => {
   e.target.closest(".hl").classList.toggle("on", h.selected);
   updateSummary();
 };
-$("#pre").onchange = $("#post").onchange = $("#mvp").onchange = () => state.steamid && loadHighlights();
+$("#mode").onchange = $("#pre").onchange = $("#post").onchange = $("#mvp").onchange =
+  () => state.steamid && loadHighlights();
 
 function updateSummary() {
   const sel = state.highlights.filter((h) => h.selected);
@@ -174,6 +185,8 @@ $("#render").onclick = async () => {
   const body = {
     demo_id: state.demo.id,
     steamid: state.steamid,
+    mode: $("#mode").value,
+    killfeed_all: $("#killfeed").value === "all",
     highlight_ids: state.highlights.filter((h) => h.selected).map((h) => h.id),
     pre_s: +$("#pre").value,
     post_s: +$("#post").value,

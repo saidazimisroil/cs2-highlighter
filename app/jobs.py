@@ -10,7 +10,7 @@ from pathlib import Path
 
 from .compile import ClipSpec, compile_video
 from .config import OUTPUT_DIR, RENDERS_DIR
-from .highlights import Highlight
+from .highlights import MODES, Highlight
 from .parser import MatchData
 from .render import RenderSettings, render
 
@@ -26,6 +26,7 @@ class Job:
     player_name: str
     highlights: list[Highlight]
     settings: RenderSettings
+    mode: str = "best"  # highlights.MODES
     status: str = "queued"  # queued | recording | compiling | done | error
     log: list[str] = field(default_factory=list)
     output: str | None = None
@@ -44,6 +45,7 @@ class Job:
             "status": self.status,
             "player": self.player_name,
             "map": self.match.map_name,
+            "mode": self.mode,
             "clips": [h.label for h in self.highlights],
             "segments": sum(len(h.segments) for h in self.highlights),
             "log": self.log[-log_tail:],
@@ -98,7 +100,8 @@ class JobManager:
             by_highlight.setdefault(seg.highlight_id, []).append(seg.path)
         clips = [ClipSpec(h.label, by_highlight[h.id]) for h in job.highlights if h.id in by_highlight]
         won, lost = job.match.score_for(job.steamid)
-        out = OUTPUT_DIR / f"{job.match.map_name}_{_safe(job.player_name)}_{job.id}.mp4"
+        suffix = "" if job.mode == "best" else f"_{job.mode}"
+        out = OUTPUT_DIR / f"{job.match.map_name}_{_safe(job.player_name)}{suffix}_{job.id}.mp4"
         compile_video(job.player_name, f"{job.match.map_name} · {won}–{lost}", clips, out,
-                      work / "compile", s.width, s.height, s.framerate, s.crf, job.add_log)
+                      work / "compile", s.width, s.height, s.framerate, s.crf, job.add_log, kind=MODES[job.mode])
         job.output = str(out)

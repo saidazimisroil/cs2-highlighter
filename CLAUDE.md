@@ -36,7 +36,10 @@ live only in memory, so restart the server to pick up code changes. A restart dr
   `Round`/`Death` objects by hand. The scoring constants at the top are the tuning knobs. Each
   selected round becomes one uncut `Segment` (pre-roll before the first kill → post-roll after
   the last kill, or on to death / round end + MVP music, depending on the per-round options).
-  Ticks are 64/s (`config.TICKRATE`).
+  Ticks are 64/s (`config.TICKRATE`). `detect_highlights(mode=…)` picks the recording mode
+  (`MODES`): `best` (scored rounds), `knife` (one clip per round with knife kills) and `awp_miss`
+  (the player's AWP shots that hit nobody, from `MatchData.shots`; a hit is a `player_hurt` on the
+  shot's tick, within `parser.HIT_WINDOW`).
 - **render.py**: picks the recording mode from `CS2HL_RENDER_MODE`. The default is `hlae`
   (in `hlae.py`). `config` and `per-clip` are older fallbacks that call CS Demo Manager's
   `csdm video`. Note that csdm exits 0 even when CS2 crashed, so its output is also checked for
