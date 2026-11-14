@@ -81,6 +81,19 @@ class MatchData:
                 lost += 1
         return won, lost
 
+    def kd_for(self, steamid: str) -> tuple[int, int]:
+        """(kills, deaths) as on the scoreboard: kills leave out suicides and teamkills."""
+        rosters = {r.number: r.roster for r in self.rounds}
+        kills = deaths = 0
+        for d in self.deaths:
+            if d.victim == steamid:
+                deaths += 1
+            elif d.attacker == steamid:
+                roster = rosters.get(d.round, {})
+                if steamid not in roster or roster.get(d.victim) != roster[steamid]:
+                    kills += 1
+        return kills, deaths
+
 
 def _sid(v) -> str:
     if v is None or (isinstance(v, float) and pd.isna(v)) or v is pd.NA:

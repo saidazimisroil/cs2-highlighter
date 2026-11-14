@@ -142,7 +142,7 @@ async def get_demo(demo_id: str):
         "map": m.map_name,
         "rounds": len(m.rounds),
         "warning": demo_warning(m.demo_version, find_cs2_version()),
-        "players": [asdict(p) | {"score": m.score_for(p.steamid)} for p in m.players],
+        "players": [asdict(p) | {"score": m.score_for(p.steamid), "kd": m.kd_for(p.steamid)} for p in m.players],
     }
 
 

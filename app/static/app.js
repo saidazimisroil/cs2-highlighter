@@ -82,11 +82,15 @@ drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove("over"); upload
 function renderPlayers() {
   const teams = { 2: [], 3: [] };
   for (const p of state.demo.players) (teams[p.team] || (teams[p.team] = [])).push(p);
-  const block = (team, cls, title) =>
-    `<div class="team ${cls}"><h3>${title}</h3>${(teams[team] || [])
+  // the round score is the same for the whole team, so it goes in the heading; rows show K–D
+  const block = (team, cls, title) => {
+    const ps = teams[team] || [];
+    const score = ps.length ? ` · ${ps[0].score[0]}–${ps[0].score[1]}` : "";
+    return `<div class="team ${cls}"><h3>${title}${score}</h3>${ps
       .map((p) => `<button class="player ${p.steamid === state.steamid ? "active" : ""}" data-sid="${p.steamid}">
-          <span>${esc(p.name)}</span><span class="muted">${p.score[0]}–${p.score[1]}</span></button>`)
+          <span>${esc(p.name)}</span><span class="muted" title="kills–deaths">${p.kd[0]}–${p.kd[1]}</span></button>`)
       .join("")}</div>`;
+  };
   $("#teams").innerHTML = block(2, "t", "Ended as T") + block(3, "ct", "Ended as CT");
 }
 $("#teams").onclick = (e) => {

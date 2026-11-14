@@ -302,3 +302,15 @@ def test_other_players_deaths_and_mvp_are_ignored():
     m = MatchData("de_test", [Player(ME, "me", T)], [rnd_end], [kill(11000, ME, attacker="e1")])
     h, = detect_highlights(m, ME, Options(mvp_s=10), mode="deaths")
     assert h.segments[0].end_tick == 11000 + 2 * S  # no MVP music after a death
+
+
+def test_kd_counts_enemy_kills_and_every_death():
+    rnd = make_round()
+    deaths = [kill(1100, "e1"), kill(1200, "e2", headshot=True),
+              kill(1300, "m1"),  # teamkill: not a kill
+              kill(1400, ME, attacker=ME, weapon="world"),  # suicide: a death, not a kill
+              kill(1500, ME, attacker="e3")]
+    m = MatchData("de_test", [], [rnd], deaths)
+    assert m.kd_for(ME) == (2, 2)
+    assert m.kd_for("e3") == (1, 0)
+    assert m.kd_for("e1") == (0, 1)
