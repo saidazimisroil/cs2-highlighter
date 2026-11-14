@@ -66,7 +66,12 @@ def _demo_path(demo_id: str) -> Path:
 
 async def _match(demo_id: str) -> MatchData:
     if demo_id not in _matches:
-        _matches[demo_id] = await run_in_threadpool(parse_demo, _demo_path(demo_id))
+        path = _demo_path(demo_id)
+        try:
+            _matches[demo_id] = await run_in_threadpool(parse_demo, path)
+        except Exception as e:  # demoparser2 raises plain Exceptions, e.g. "EntityNotFound"
+            raise HTTPException(422, f"Couldn't read this demo ({e}). It may be from a newer CS2 update than "
+                                     "the demo parser supports: restart run.bat to update it, then try again.")
     return _matches[demo_id]
 
 

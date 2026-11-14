@@ -1,4 +1,4 @@
-demoparser2>=0.42
+demoparser2>=0.42.2  # 0.42.1 fails with EntityNotFound on CS2 14197 demos
 pandas>=2.2
 fastapi>=0.115
 uvicorn[standard]>=0.30
